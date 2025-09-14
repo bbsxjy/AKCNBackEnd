@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  # FastAPI application
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://akcn_user:akcn_password@db:5432/akcn_db
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - ./uploads:/app/uploads
+    restart: unless-stopped
+
+  # PostgreSQL database
+  db:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=akcn_user
+      - POSTGRES_PASSWORD=akcn_password
+      - POSTGRES_DB=akcn_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: unless-stopped
+
+  # Redis for caching and Celery
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  # Celery worker
+  worker:
+    build: .
+    command: celery -A app.core.celery worker --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://akcn_user:akcn_password@db:5432/akcn_db
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+
+  # Celery flower (monitoring)
+  flower:
+    build: .
+    command: celery -A app.core.celery flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
