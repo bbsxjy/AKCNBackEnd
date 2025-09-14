@@ -4,7 +4,7 @@ API v1 router configuration
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, applications, subtasks, calculation
+from app.api.v1.endpoints import auth, applications, subtasks, calculation, audit
 
 api_router = APIRouter()
 
@@ -13,3 +13,4 @@ api_router.include_router(auth.router, prefix="/auth", tags=["authentication"])
 api_router.include_router(applications.router, prefix="/applications", tags=["applications"])
 api_router.include_router(subtasks.router, prefix="/subtasks", tags=["subtasks"])
 api_router.include_router(calculation.router, prefix="/calculation", tags=["calculation"])
+api_router.include_router(audit.router, prefix="/audit", tags=["audit"])
