@@ -4,7 +4,9 @@
       "Read(//d/Program Files (x86)/CodeRepos/AKCNProjectManagement/**)",
       "Bash(git init:*)",
       "Bash(git config:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []
