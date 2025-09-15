@@ -12,7 +12,10 @@
       "Bash(python -m pytest tests/ -v --tb=short)",
       "Bash(python:*)",
       "Bash(find:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(curl:*)",
+      "Bash(netstat:*)",
+      "Bash(taskkill:*)"
     ],
     "deny": [],
     "ask": []

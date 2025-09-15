@@ -10,8 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status, Background
 from fastapi.responses import Response, FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
-from app.middleware.auth import get_current_user, require_roles
+from app.api.deps import get_db, get_current_user, require_roles
 from app.models.user import User, UserRole
 from app.services.report_service import ReportService, ReportType as ServiceReportType
 from app.schemas.report import (

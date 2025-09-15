@@ -87,3 +87,14 @@ class ExternalServiceError(ApplicationError):
         if status_code:
             details["status_code"] = status_code
         super().__init__(message or f"External service error: {service_name}", details)
+
+
+class BusinessLogicError(ApplicationError):
+    """Raised when business logic validation fails."""
+
+    def __init__(self, message: str = None, code: str = None):
+        self.code = code
+        details = {}
+        if code:
+            details["error_code"] = code
+        super().__init__(message or "Business logic error", details)

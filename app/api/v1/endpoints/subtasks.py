@@ -6,8 +6,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
-from app.middleware.auth import get_current_user, require_roles
+from app.api.deps import get_db, get_current_user, require_roles
 from app.models.user import User, UserRole
 from app.models.subtask import SubTaskStatus
 from app.services.subtask_service import SubTaskService
