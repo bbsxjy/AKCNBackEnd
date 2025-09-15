@@ -20,7 +20,7 @@ class Settings(BaseSettings):
 
     # Database settings
     DATABASE_URL: str = Field(
-        ...,
+        default="postgresql+asyncpg://user:password@localhost/akcn_db",
         description="PostgreSQL database connection URL"
     )
     TEST_DATABASE_URL: str = Field(
@@ -36,22 +36,46 @@ class Settings(BaseSettings):
 
     # SSO settings
     SSO_BASE_URL: str = Field(
-        ...,
+        default="https://sso.example.com",
         description="SSO system base URL"
     )
     SSO_CLIENT_ID: str = Field(
-        ...,
+        default="test_client_id",
         description="SSO client ID"
     )
     SSO_CLIENT_SECRET: str = Field(
-        ...,
+        default="test_client_secret",
         description="SSO client secret"
+    )
+    SSO_ISSUER: str = Field(
+        default="https://sso.example.com",
+        description="SSO issuer"
+    )
+    SSO_REDIRECT_URI: str = Field(
+        default="http://localhost:8000/auth/callback",
+        description="SSO redirect URI"
+    )
+    SSO_TOKEN_ENDPOINT: str = Field(
+        default="https://sso.example.com/oauth/token",
+        description="SSO token endpoint"
+    )
+    SSO_USERINFO_ENDPOINT: str = Field(
+        default="https://sso.example.com/oauth/userinfo",
+        description="SSO userinfo endpoint"
     )
 
     # JWT settings
+    SECRET_KEY: str = Field(
+        default="your-secret-key-here-change-in-production",
+        description="Secret key for JWT and other security purposes"
+    )
     JWT_SECRET_KEY: str = Field(
-        ...,
+        default="your-jwt-secret-key-here-change-in-production",
         description="JWT secret key for token signing"
+    )
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(
+        default=60 * 24,  # 24 hours
+        description="Access token expiration in minutes"
     )
     JWT_ALGORITHM: str = Field(
         default="HS256",
@@ -91,6 +115,10 @@ class Settings(BaseSettings):
     )
 
     # Email settings
+    EMAIL_FROM: str = Field(
+        default="noreply@example.com",
+        description="Default from email address"
+    )
     SMTP_HOST: str = Field(
         default="localhost",
         description="SMTP server host"

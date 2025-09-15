@@ -11,7 +11,8 @@
       "Bash(git merge:*)",
       "Bash(python -m pytest tests/ -v --tb=short)",
       "Bash(python:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(pip install:*)"
     ],
     "deny": [],
     "ask": []
