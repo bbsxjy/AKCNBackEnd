@@ -302,7 +302,7 @@ async def export_report(
 
 @router.get("/templates", response_model=List[ReportTemplate])
 async def list_report_templates(
-    report_type: Optional[ServiceReportType] = Query(None, description="Filter by report type"),
+    report_type: Optional[str] = Query(None, description="Filter by report type"),
     is_public: Optional[bool] = Query(None, description="Filter by public templates"),
     current_user: User = Depends(require_roles([UserRole.ADMIN, UserRole.MANAGER, UserRole.EDITOR]))
 ):

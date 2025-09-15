@@ -15,7 +15,8 @@
       "Bash(pip install:*)",
       "Bash(curl:*)",
       "Bash(netstat:*)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Bash(wmic process where ProcessId=16112 get CommandLine:*)"
     ],
     "deny": [],
     "ask": []

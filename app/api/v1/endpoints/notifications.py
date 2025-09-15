@@ -38,7 +38,7 @@ from app.schemas.notification import (
     NotificationPriority
 )
 from app.services.notification_service import NotificationService
-from app.core.security import check_permission
+from app.api.deps import check_permission
 
 router = APIRouter()
 notification_service = NotificationService()
