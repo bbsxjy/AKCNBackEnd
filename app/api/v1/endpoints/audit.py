@@ -3,13 +3,15 @@ Audit Log API endpoints
 """
 
 import time
+import io
 from typing import Optional, List
 from datetime import date, datetime
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
-from app.middleware.auth import get_current_user, require_roles
+from app.api.deps import get_db, get_current_user, require_roles
+from app.core.exceptions import NotFoundError, ValidationError
 from app.models.user import User, UserRole
 from app.models.audit_log import AuditOperation
 from app.services.audit_service import AuditService
@@ -17,7 +19,8 @@ from app.schemas.audit import (
     AuditLogResponse, AuditLogListResponse, AuditLogFilter,
     RecordHistoryResponse, UserActivityResponse, AuditStatistics,
     DataChangesSummary, ComplianceReport, AuditCleanupRequest,
-    AuditCleanupResult, AuditHealthCheck
+    AuditCleanupResult, AuditHealthCheck, RollbackRequest, RollbackResponse,
+    AuditExportRequest, AuditExportResponse
 )
 
 router = APIRouter()
@@ -353,37 +356,97 @@ async def get_data_changes_summary(
 
 @router.post("/export")
 async def export_audit_trail(
-    table_name: Optional[str] = Query(None, description="Filter by table name"),
-    record_id: Optional[int] = Query(None, description="Filter by record ID"),
-    start_date: Optional[date] = Query(None, description="Start date for export"),
-    end_date: Optional[date] = Query(None, description="End date for export"),
-    export_format: str = Query("json", description="Export format"),
+    export_request: AuditExportRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_roles([UserRole.ADMIN]))
 ):
-    """Export audit trail data for compliance purposes."""
-    try:
-        export_data = await audit_service.export_audit_trail(
-            db=db,
-            table_name=table_name,
-            record_id=record_id,
-            start_date=start_date,
-            end_date=end_date,
-            format=export_format
-        )
+    """
+    Export audit trail data in various formats.
 
-        return {
-            "export_format": export_format,
-            "total_records": len(export_data),
-            "export_timestamp": datetime.utcnow().isoformat(),
-            "filters": {
-                "table_name": table_name,
-                "record_id": record_id,
-                "start_date": start_date.isoformat() if start_date else None,
-                "end_date": end_date.isoformat() if end_date else None
-            },
-            "data": export_data
-        }
+    Supported formats:
+    - json: Returns data as JSON response
+    - csv: Returns downloadable CSV file
+    - excel: Returns downloadable Excel file with summary
+    """
+    try:
+        export_format = export_request.format.lower()
+
+        # Apply filters from request
+        table_name = export_request.table_name
+        record_id = export_request.record_id
+        user_id = export_request.user_id
+        operation = export_request.operation
+        start_date = export_request.start_date
+        end_date = export_request.end_date
+
+        if export_format == "csv":
+            # Export to CSV
+            csv_data = await audit_service.export_audit_trail_to_csv(
+                db=db,
+                table_name=table_name,
+                record_id=record_id,
+                user_id=user_id,
+                operation=operation,
+                start_date=start_date,
+                end_date=end_date
+            )
+
+            filename = f"audit_trail_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+            return StreamingResponse(
+                io.BytesIO(csv_data),
+                media_type="text/csv",
+                headers={
+                    "Content-Disposition": f"attachment; filename={filename}",
+                    "Content-Type": "text/csv; charset=utf-8"
+                }
+            )
+
+        elif export_format == "excel":
+            # Export to Excel
+            excel_data = await audit_service.export_audit_trail_to_excel(
+                db=db,
+                table_name=table_name,
+                record_id=record_id,
+                user_id=user_id,
+                operation=operation,
+                start_date=start_date,
+                end_date=end_date
+            )
+
+            filename = f"audit_trail_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+            return StreamingResponse(
+                io.BytesIO(excel_data),
+                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers={
+                    "Content-Disposition": f"attachment; filename={filename}",
+                    "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                }
+            )
+
+        else:  # Default to JSON
+            # Export as JSON
+            export_data = await audit_service.export_audit_trail(
+                db=db,
+                table_name=table_name,
+                record_id=record_id,
+                start_date=start_date,
+                end_date=end_date
+            )
+
+            return AuditExportResponse(
+                export_format="json",
+                total_records=len(export_data),
+                export_timestamp=datetime.utcnow(),
+                filters_applied={
+                    "table_name": table_name,
+                    "record_id": record_id,
+                    "user_id": user_id,
+                    "operation": operation.value if operation else None,
+                    "start_date": start_date.isoformat() if start_date else None,
+                    "end_date": end_date.isoformat() if end_date else None
+                },
+                data=export_data
+            )
 
     except Exception as e:
         raise HTTPException(
@@ -554,4 +617,71 @@ async def audit_health_check(
             storage_size_mb=None,
             performance_metrics={"error": str(e)},
             issues=[f"Health check failed: {str(e)}"]
+        )
+
+
+@router.post("/{audit_log_id}/rollback", response_model=RollbackResponse)
+async def rollback_audit_change(
+    audit_log_id: int,
+    rollback_request: RollbackRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles([UserRole.ADMIN, UserRole.MANAGER]))
+):
+    """
+    Rollback a change based on audit log entry.
+
+    This endpoint allows authorized users to rollback a previously recorded change:
+    - For INSERT operations: The record will be deleted
+    - For UPDATE operations: The old values will be restored
+    - For DELETE operations: The record will be re-inserted with original values
+
+    Note: The rollback operation itself will be recorded in the audit log.
+    """
+
+    if not rollback_request.confirm:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Rollback confirmation required. Set confirm=true to proceed."
+        )
+
+    try:
+        # Get request context
+        import uuid
+        request_id = str(uuid.uuid4())
+
+        # Perform rollback
+        result = await audit_service.rollback_change(
+            db=db,
+            audit_log_id=audit_log_id,
+            user_id=current_user.id,
+            reason=rollback_request.reason,
+            request_id=request_id,
+            user_ip=None,  # Would be extracted from request in production
+            user_agent=None  # Would be extracted from request headers in production
+        )
+
+        # Format response
+        return RollbackResponse(
+            status="success",
+            rollback_audit_id=result["rollback_audit_id"],
+            affected_record=result["affected_record"],
+            message=f"Successfully rolled back audit log {audit_log_id}. "
+                   f"Operation: {result['affected_record']['operation']} on "
+                   f"{result['affected_record']['table']} record {result['affected_record']['id']}"
+        )
+
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to rollback audit change: {str(e)}"
         )

@@ -2,11 +2,17 @@
 Audit service layer for tracking and managing audit logs
 """
 
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Union
 from datetime import datetime, date
-from sqlalchemy import select, func, and_, or_, desc, asc, text
+from sqlalchemy import select, func, and_, or_, desc, asc, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+import json
+import csv
+import io
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.utils import get_column_letter
 
 from app.models.audit_log import AuditLog, AuditOperation
 from app.models.user import User
@@ -34,7 +40,7 @@ class AuditService:
         user_ip: Optional[str] = None,
         user_agent: Optional[str] = None,
         reason: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        extra_data: Optional[Dict[str, Any]] = None
     ) -> AuditLog:
         """Create a new audit log entry."""
 
@@ -57,7 +63,7 @@ class AuditService:
             user_ip=user_ip,
             user_agent=user_agent,
             reason=reason,
-            metadata=metadata,
+            extra_data=extra_data,
             user_id=user_id
         )
 
@@ -118,7 +124,7 @@ class AuditService:
             conditions.append(AuditLog.created_at <= end_datetime)
 
         if search:
-            # Search in reason, metadata, or user agent
+            # Search in reason, extra_data, or user agent
             search_conditions = [
                 AuditLog.reason.ilike(f"%{search}%"),
                 AuditLog.user_agent.ilike(f"%{search}%"),
@@ -411,11 +417,169 @@ class AuditService:
                 "user_ip": log.user_ip,
                 "user_agent": log.user_agent,
                 "reason": log.reason,
-                "metadata": log.metadata
+                "extra_data": log.extra_data
             }
             export_data.append(export_record)
 
         return export_data
+
+    async def export_audit_trail_to_csv(
+        self,
+        db: AsyncSession,
+        table_name: Optional[str] = None,
+        record_id: Optional[int] = None,
+        user_id: Optional[int] = None,
+        operation: Optional[AuditOperation] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None
+    ) -> bytes:
+        """Export audit trail to CSV format."""
+
+        # Get audit data
+        export_data = await self.export_audit_trail(
+            db=db,
+            table_name=table_name,
+            record_id=record_id,
+            start_date=start_date,
+            end_date=end_date
+        )
+
+        # Create CSV in memory
+        output = io.StringIO()
+
+        if export_data:
+            # Define CSV columns
+            fieldnames = [
+                'id', 'timestamp', 'table_name', 'record_id', 'operation',
+                'user_id', 'username', 'user_full_name', 'changed_fields',
+                'request_id', 'user_ip', 'reason'
+            ]
+
+            writer = csv.DictWriter(output, fieldnames=fieldnames)
+            writer.writeheader()
+
+            for log in export_data:
+                writer.writerow({
+                    'id': log['id'],
+                    'timestamp': log['timestamp'],
+                    'table_name': log['table_name'],
+                    'record_id': log['record_id'],
+                    'operation': log['operation'],
+                    'user_id': log['user_id'],
+                    'username': log['username'],
+                    'user_full_name': log['user_full_name'],
+                    'changed_fields': json.dumps(log['changed_fields']) if log['changed_fields'] else '',
+                    'request_id': log['request_id'],
+                    'user_ip': log['user_ip'],
+                    'reason': log['reason']
+                })
+
+        # Convert to bytes
+        output.seek(0)
+        return output.getvalue().encode('utf-8-sig')  # UTF-8 with BOM for Excel compatibility
+
+    async def export_audit_trail_to_excel(
+        self,
+        db: AsyncSession,
+        table_name: Optional[str] = None,
+        record_id: Optional[int] = None,
+        user_id: Optional[int] = None,
+        operation: Optional[AuditOperation] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None
+    ) -> bytes:
+        """Export audit trail to Excel format."""
+
+        # Get audit data
+        export_data = await self.export_audit_trail(
+            db=db,
+            table_name=table_name,
+            record_id=record_id,
+            start_date=start_date,
+            end_date=end_date
+        )
+
+        # Create workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Audit Trail"
+
+        # Define headers
+        headers = [
+            'ID', 'Timestamp', 'Table', 'Record ID', 'Operation',
+            'User ID', 'Username', 'Full Name', 'Changed Fields',
+            'Old Values', 'New Values', 'Request ID', 'IP Address', 'Reason'
+        ]
+
+        # Style for headers
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        header_alignment = Alignment(horizontal="center", vertical="center")
+
+        # Write headers
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+
+        # Write data
+        for row_idx, log in enumerate(export_data, 2):
+            ws.cell(row=row_idx, column=1, value=log['id'])
+            ws.cell(row=row_idx, column=2, value=log['timestamp'])
+            ws.cell(row=row_idx, column=3, value=log['table_name'])
+            ws.cell(row=row_idx, column=4, value=log['record_id'])
+            ws.cell(row=row_idx, column=5, value=log['operation'])
+            ws.cell(row=row_idx, column=6, value=log['user_id'])
+            ws.cell(row=row_idx, column=7, value=log['username'])
+            ws.cell(row=row_idx, column=8, value=log['user_full_name'])
+            ws.cell(row=row_idx, column=9, value=json.dumps(log['changed_fields']) if log['changed_fields'] else '')
+            ws.cell(row=row_idx, column=10, value=json.dumps(log['old_values']) if log['old_values'] else '')
+            ws.cell(row=row_idx, column=11, value=json.dumps(log['new_values']) if log['new_values'] else '')
+            ws.cell(row=row_idx, column=12, value=log['request_id'])
+            ws.cell(row=row_idx, column=13, value=log['user_ip'])
+            ws.cell(row=row_idx, column=14, value=log['reason'])
+
+        # Auto-adjust column widths
+        for column_cells in ws.columns:
+            length = max(len(str(cell.value or '')) for cell in column_cells)
+            ws.column_dimensions[get_column_letter(column_cells[0].column)].width = min(length + 2, 50)
+
+        # Add filters
+        ws.auto_filter.ref = ws.dimensions
+
+        # Add summary sheet
+        ws_summary = wb.create_sheet("Summary")
+        ws_summary.append(["Export Summary"])
+        ws_summary.append(["Total Records", len(export_data)])
+        ws_summary.append(["Export Date", datetime.utcnow().isoformat()])
+
+        if start_date:
+            ws_summary.append(["Start Date", start_date.isoformat()])
+        if end_date:
+            ws_summary.append(["End Date", end_date.isoformat()])
+        if table_name:
+            ws_summary.append(["Table Filter", table_name])
+        if record_id:
+            ws_summary.append(["Record ID Filter", record_id])
+
+        # Operation breakdown
+        if export_data:
+            operation_counts = {}
+            for log in export_data:
+                op = log['operation']
+                operation_counts[op] = operation_counts.get(op, 0) + 1
+
+            ws_summary.append([])
+            ws_summary.append(["Operation Breakdown"])
+            for op, count in operation_counts.items():
+                ws_summary.append([op, count])
+
+        # Save to bytes
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        return output.getvalue()
 
     async def get_compliance_report(
         self,
@@ -494,3 +658,253 @@ class AuditService:
             },
             "generated_at": datetime.utcnow().isoformat()
         }
+
+    async def rollback_change(
+        self,
+        db: AsyncSession,
+        audit_log_id: int,
+        user_id: int,
+        reason: Optional[str] = None,
+        request_id: Optional[str] = None,
+        user_ip: Optional[str] = None,
+        user_agent: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Rollback a change based on audit log entry."""
+
+        # Get the audit log entry
+        audit_log = await self.get_audit_log(db, audit_log_id)
+        if not audit_log:
+            raise NotFoundError(f"Audit log with ID {audit_log_id} not found")
+
+        # Validate that the operation can be rolled back
+        if audit_log.operation == AuditOperation.INSERT:
+            # For INSERT, we need to DELETE the record
+            return await self._rollback_insert(db, audit_log, user_id, reason, request_id, user_ip, user_agent)
+        elif audit_log.operation == AuditOperation.UPDATE:
+            # For UPDATE, we need to restore old values
+            return await self._rollback_update(db, audit_log, user_id, reason, request_id, user_ip, user_agent)
+        elif audit_log.operation == AuditOperation.DELETE:
+            # For DELETE, we need to INSERT the record back
+            return await self._rollback_delete(db, audit_log, user_id, reason, request_id, user_ip, user_agent)
+        else:
+            raise ValidationError(f"Unknown operation type: {audit_log.operation}")
+
+    async def _rollback_insert(
+        self,
+        db: AsyncSession,
+        audit_log: AuditLog,
+        user_id: int,
+        reason: Optional[str],
+        request_id: Optional[str],
+        user_ip: Optional[str],
+        user_agent: Optional[str]
+    ) -> Dict[str, Any]:
+        """Rollback an INSERT operation by deleting the record."""
+
+        # Get the model class for the table
+        model_class = self._get_model_class(audit_log.table_name)
+        if not model_class:
+            raise ValidationError(f"Unknown table: {audit_log.table_name}")
+
+        # Find and delete the record
+        result = await db.execute(
+            select(model_class).where(model_class.id == audit_log.record_id)
+        )
+        record = result.scalar_one_or_none()
+
+        if not record:
+            raise NotFoundError(f"Record {audit_log.record_id} not found in table {audit_log.table_name}")
+
+        # Store current values before deletion
+        current_values = self._serialize_record(record)
+
+        # Delete the record
+        await db.delete(record)
+
+        # Create rollback audit log
+        rollback_audit = await self.create_audit_log(
+            db=db,
+            table_name=audit_log.table_name,
+            record_id=audit_log.record_id,
+            operation=AuditOperation.DELETE,
+            old_values=current_values,
+            new_values=None,
+            user_id=user_id,
+            request_id=request_id,
+            user_ip=user_ip,
+            user_agent=user_agent,
+            reason=f"Rollback of INSERT (audit_id={audit_log.id}): {reason}" if reason else f"Rollback of INSERT (audit_id={audit_log.id})",
+            extra_data={"rollback_of_audit_id": audit_log.id}
+        )
+
+        await db.commit()
+
+        return {
+            "status": "success",
+            "rollback_audit_id": rollback_audit.id,
+            "affected_record": {
+                "table": audit_log.table_name,
+                "id": audit_log.record_id,
+                "operation": "DELETE",
+                "restored_values": None
+            }
+        }
+
+    async def _rollback_update(
+        self,
+        db: AsyncSession,
+        audit_log: AuditLog,
+        user_id: int,
+        reason: Optional[str],
+        request_id: Optional[str],
+        user_ip: Optional[str],
+        user_agent: Optional[str]
+    ) -> Dict[str, Any]:
+        """Rollback an UPDATE operation by restoring old values."""
+
+        if not audit_log.old_values:
+            raise ValidationError("Cannot rollback UPDATE: no old values stored")
+
+        # Get the model class for the table
+        model_class = self._get_model_class(audit_log.table_name)
+        if not model_class:
+            raise ValidationError(f"Unknown table: {audit_log.table_name}")
+
+        # Find the record
+        result = await db.execute(
+            select(model_class).where(model_class.id == audit_log.record_id)
+        )
+        record = result.scalar_one_or_none()
+
+        if not record:
+            raise NotFoundError(f"Record {audit_log.record_id} not found in table {audit_log.table_name}")
+
+        # Store current values before update
+        current_values = self._serialize_record(record)
+
+        # Restore old values
+        for field, value in audit_log.old_values.items():
+            if hasattr(record, field):
+                # Handle datetime fields
+                if field in ['created_at', 'updated_at', 'start_date', 'end_date', 'planned_online_date', 'actual_online_date']:
+                    if value:
+                        value = datetime.fromisoformat(value.replace('Z', '+00:00')) if isinstance(value, str) else value
+                setattr(record, field, value)
+
+        # Create rollback audit log
+        rollback_audit = await self.create_audit_log(
+            db=db,
+            table_name=audit_log.table_name,
+            record_id=audit_log.record_id,
+            operation=AuditOperation.UPDATE,
+            old_values=current_values,
+            new_values=audit_log.old_values,
+            user_id=user_id,
+            request_id=request_id,
+            user_ip=user_ip,
+            user_agent=user_agent,
+            reason=f"Rollback of UPDATE (audit_id={audit_log.id}): {reason}" if reason else f"Rollback of UPDATE (audit_id={audit_log.id})",
+            extra_data={"rollback_of_audit_id": audit_log.id}
+        )
+
+        await db.commit()
+
+        return {
+            "status": "success",
+            "rollback_audit_id": rollback_audit.id,
+            "affected_record": {
+                "table": audit_log.table_name,
+                "id": audit_log.record_id,
+                "operation": "UPDATE",
+                "restored_values": audit_log.old_values
+            }
+        }
+
+    async def _rollback_delete(
+        self,
+        db: AsyncSession,
+        audit_log: AuditLog,
+        user_id: int,
+        reason: Optional[str],
+        request_id: Optional[str],
+        user_ip: Optional[str],
+        user_agent: Optional[str]
+    ) -> Dict[str, Any]:
+        """Rollback a DELETE operation by re-inserting the record."""
+
+        if not audit_log.old_values:
+            raise ValidationError("Cannot rollback DELETE: no old values stored")
+
+        # Get the model class for the table
+        model_class = self._get_model_class(audit_log.table_name)
+        if not model_class:
+            raise ValidationError(f"Unknown table: {audit_log.table_name}")
+
+        # Create new record with old values
+        record_data = {}
+        for field, value in audit_log.old_values.items():
+            if field != 'id' and hasattr(model_class, field):
+                # Handle datetime fields
+                if field in ['created_at', 'updated_at', 'start_date', 'end_date', 'planned_online_date', 'actual_online_date']:
+                    if value:
+                        value = datetime.fromisoformat(value.replace('Z', '+00:00')) if isinstance(value, str) else value
+                record_data[field] = value
+
+        # Create new record
+        new_record = model_class(**record_data)
+        new_record.id = audit_log.record_id  # Restore original ID
+
+        db.add(new_record)
+
+        # Create rollback audit log
+        rollback_audit = await self.create_audit_log(
+            db=db,
+            table_name=audit_log.table_name,
+            record_id=audit_log.record_id,
+            operation=AuditOperation.INSERT,
+            old_values=None,
+            new_values=audit_log.old_values,
+            user_id=user_id,
+            request_id=request_id,
+            user_ip=user_ip,
+            user_agent=user_agent,
+            reason=f"Rollback of DELETE (audit_id={audit_log.id}): {reason}" if reason else f"Rollback of DELETE (audit_id={audit_log.id})",
+            extra_data={"rollback_of_audit_id": audit_log.id}
+        )
+
+        await db.commit()
+
+        return {
+            "status": "success",
+            "rollback_audit_id": rollback_audit.id,
+            "affected_record": {
+                "table": audit_log.table_name,
+                "id": audit_log.record_id,
+                "operation": "INSERT",
+                "restored_values": audit_log.old_values
+            }
+        }
+
+    def _get_model_class(self, table_name: str):
+        """Get the SQLAlchemy model class for a table name."""
+        # Map table names to model classes
+        table_model_map = {
+            "applications": Application,
+            "sub_tasks": SubTask,
+            "users": User,
+            "audit_logs": AuditLog
+        }
+        return table_model_map.get(table_name)
+
+    def _serialize_record(self, record) -> Dict[str, Any]:
+        """Serialize a SQLAlchemy model instance to dictionary."""
+        result = {}
+        for column in record.__table__.columns:
+            value = getattr(record, column.name)
+            # Handle datetime serialization
+            if isinstance(value, datetime):
+                value = value.isoformat()
+            elif isinstance(value, date):
+                value = value.isoformat()
+            result[column.name] = value
+        return result

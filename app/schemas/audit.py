@@ -121,15 +121,29 @@ class DataChangesSummary(BaseModel):
     most_changed_fields: List[List[Any]] = Field(..., description="Most frequently changed fields")
 
 
-class AuditTrailExport(BaseModel):
-    """Schema for audit trail export."""
-    export_format: str = Field("json", description="Export format (json, csv)")
+class AuditExportRequest(BaseModel):
+    """Schema for audit export request."""
+    format: str = Field("json", description="Export format (json, csv, excel)")
+    filters: Optional[Dict[str, Any]] = Field(None, description="Export filters")
     table_name: Optional[str] = Field(None, description="Filter by table name")
     record_id: Optional[int] = Field(None, description="Filter by record ID")
+    user_id: Optional[int] = Field(None, description="Filter by user ID")
+    operation: Optional[AuditOperation] = Field(None, description="Filter by operation type")
     start_date: Optional[date] = Field(None, description="Start date for export")
     end_date: Optional[date] = Field(None, description="End date for export")
     include_system_operations: bool = Field(True, description="Include system operations")
     include_sensitive_data: bool = Field(False, description="Include sensitive field values")
+
+
+class AuditExportResponse(BaseModel):
+    """Schema for audit export response (for JSON format)."""
+    export_format: str = Field(..., description="Export format used")
+    total_records: int = Field(..., description="Total number of records exported")
+    export_timestamp: datetime = Field(..., description="Timestamp of export")
+    filters_applied: Dict[str, Any] = Field(..., description="Filters that were applied")
+    data: Optional[List[Dict[str, Any]]] = Field(None, description="Exported data (for JSON format)")
+    file_url: Optional[str] = Field(None, description="Download URL for file exports")
+    file_name: Optional[str] = Field(None, description="Name of exported file")
 
 
 class ComplianceReport(BaseModel):
@@ -223,3 +237,17 @@ class AuditSearchRequest(BaseModel):
     sort_by: str = Field("created_at", description="Sort field")
     sort_order: str = Field("desc", description="Sort order")
     limit: int = Field(100, description="Result limit", ge=1, le=1000)
+
+
+class RollbackRequest(BaseModel):
+    """Schema for rollback request."""
+    confirm: bool = Field(..., description="Confirmation flag for rollback")
+    reason: Optional[str] = Field(None, description="Reason for rollback")
+
+
+class RollbackResponse(BaseModel):
+    """Schema for rollback response."""
+    status: str = Field(..., description="Rollback status")
+    rollback_audit_id: int = Field(..., description="New audit log ID for rollback operation")
+    affected_record: Dict[str, Any] = Field(..., description="Affected record information")
+    message: str = Field(..., description="Rollback result message")
