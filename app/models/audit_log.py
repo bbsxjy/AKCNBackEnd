@@ -39,7 +39,7 @@ class AuditLog(Base):
 
     # Additional context
     reason = Column(Text, nullable=True)  # Optional reason for change
-    metadata = Column(JSON, nullable=True)  # Additional context data
+    extra_data = Column(JSON, nullable=True)  # Additional context data
 
     # Audit fields
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # Nullable for system operations

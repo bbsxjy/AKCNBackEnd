@@ -32,9 +32,8 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
 app.add_middleware(LoggingMiddleware)
 
 # Include API routers
-# TODO: Add API routers when implemented
-# from app.api.v1.api import api_router
-# app.include_router(api_router, prefix="/api/v1")
+from app.api.v1.api import api_router
+app.include_router(api_router, prefix="/api/v1")
 
 
 @app.get("/")
