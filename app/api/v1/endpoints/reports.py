@@ -7,7 +7,7 @@ import uuid
 from typing import Optional, List, Dict, Any
 from datetime import datetime, date
 from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks
-from fastapi.responses import Response, FileResponse
+from fastapi.responses import Response, FileResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, get_current_user, require_roles
@@ -27,6 +27,147 @@ from app.schemas.report import (
 
 router = APIRouter()
 report_service = ReportService()
+
+
+@router.options("/progress-summary")
+async def progress_summary_options():
+    """Handle preflight requests for progress-summary endpoint."""
+    return JSONResponse(
+        content={},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "*"
+        }
+    )
+
+
+@router.get("/progress-summary")
+async def get_progress_summary_report(
+    format: str = Query("json", description="Export format"),
+    start_date: Optional[date] = Query(None, description="Start date"),
+    end_date: Optional[date] = Query(None, description="End date"),
+    supervision_year: Optional[int] = Query(None, description="Supervision year"),
+    responsible_team: Optional[str] = Query(None, description="Responsible team"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get progress summary report via GET request."""
+
+    try:
+        # Get actual data from database
+        from sqlalchemy import select, func
+        from app.models.application import Application, ApplicationStatus
+
+        # Query applications
+        query = select(Application)
+        if supervision_year:
+            query = query.where(Application.supervision_year == supervision_year)
+        if responsible_team:
+            query = query.where(Application.responsible_team == responsible_team)
+
+        result = await db.execute(query)
+        applications = result.scalars().all()
+
+        # Calculate statistics
+        total = len(applications)
+        completed = sum(1 for app in applications if app.overall_status == ApplicationStatus.COMPLETED)
+        in_progress = sum(1 for app in applications if app.overall_status == ApplicationStatus.DEV_IN_PROGRESS)
+        not_started = sum(1 for app in applications if app.overall_status == ApplicationStatus.NOT_STARTED)
+        biz_online = sum(1 for app in applications if app.overall_status == ApplicationStatus.BIZ_ONLINE)
+        tech_online = 0  # TECH_ONLINE status doesn't exist in the enum
+        delayed = sum(1 for app in applications if app.is_delayed)
+
+        avg_progress = sum(app.progress_percentage for app in applications) / total if total > 0 else 0
+        completion_rate = (completed / total * 100) if total > 0 else 0
+
+        # Group by status
+        status_counts = {}
+        for app in applications:
+            status = app.overall_status.value if hasattr(app.overall_status, 'value') else str(app.overall_status)
+            status_counts[status] = status_counts.get(status, 0) + 1
+
+        # Group by team
+        team_stats = {}
+        for app in applications:
+            team = app.responsible_team
+            if team not in team_stats:
+                team_stats[team] = {"count": 0, "total_progress": 0}
+            team_stats[team]["count"] += 1
+            team_stats[team]["total_progress"] += app.progress_percentage
+
+        # Create response matching frontend expectations
+        # Ensure all fields are defined with safe defaults
+        response_data = {
+            "total_applications": int(total) if total is not None else 0,
+            "completed": int(completed) if completed is not None else 0,
+            "in_progress": int(in_progress) if in_progress is not None else 0,
+            "not_started": int(not_started) if not_started is not None else 0,
+            "biz_online": int(biz_online) if biz_online is not None else 0,
+            "tech_online": int(tech_online) if tech_online is not None else 0,
+            "delayed": int(delayed) if delayed is not None else 0,
+            "average_progress": round(float(avg_progress), 1) if avg_progress is not None else 0.0,
+            "completion_rate": round(float(completion_rate), 1) if completion_rate is not None else 0.0,
+            "by_status": [
+                {"status": str(status), "count": int(count)}
+                for status, count in status_counts.items()
+            ] if status_counts else [],
+            "by_team": [
+                {
+                    "team": str(team),
+                    "count": int(stats["count"]),
+                    "average_progress": round(float(stats["total_progress"]) / float(stats["count"]), 1) if stats["count"] > 0 else 0.0
+                }
+                for team, stats in team_stats.items()
+            ] if team_stats else [],
+            "report_type": "progress_summary",
+            "generated_at": datetime.utcnow().isoformat(),
+            "filters": {
+                "start_date": start_date.isoformat() if start_date else None,
+                "end_date": end_date.isoformat() if end_date else None,
+                "supervision_year": supervision_year,
+                "responsible_team": responsible_team
+            }
+        }
+
+        # Return with explicit CORS headers
+        return JSONResponse(
+            content=response_data,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+                "Content-Type": "application/json"
+            }
+        )
+
+    except Exception as e:
+        # Return error response with CORS headers
+        error_response = {
+            "error": str(e),
+            "message": "Failed to generate progress summary report",
+            "completed": 0,  # Provide default values to prevent frontend errors
+            "total_applications": 0,
+            "in_progress": 0,
+            "not_started": 0,
+            "biz_online": 0,
+            "tech_online": 0,
+            "delayed": 0,
+            "average_progress": 0,
+            "completion_rate": 0,
+            "by_status": [],
+            "by_team": []
+        }
+
+        return JSONResponse(
+            content=error_response,
+            status_code=500,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+                "Content-Type": "application/json"
+            }
+        )
 
 
 @router.post("/progress-summary", response_model=ProgressSummaryResponse)

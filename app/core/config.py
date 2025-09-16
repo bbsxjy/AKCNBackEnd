@@ -2,8 +2,8 @@
 Application configuration settings
 """
 
-from typing import List
-from pydantic import Field
+from typing import List, Union
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -91,18 +91,25 @@ class Settings(BaseSettings):
     )
 
     # CORS settings
-    ALLOWED_ORIGINS: List[str] = Field(
+    ALLOWED_ORIGINS: Union[List[str], str] = Field(
         default=["*"],
         description="Allowed CORS origins"
     )
-    ALLOWED_METHODS: List[str] = Field(
+    ALLOWED_METHODS: Union[List[str], str] = Field(
         default=["*"],
         description="Allowed CORS methods"
     )
-    ALLOWED_HEADERS: List[str] = Field(
+    ALLOWED_HEADERS: Union[List[str], str] = Field(
         default=["*"],
         description="Allowed CORS headers"
     )
+
+    @field_validator('ALLOWED_ORIGINS', 'ALLOWED_METHODS', 'ALLOWED_HEADERS', mode='before')
+    @classmethod
+    def split_strings(cls, v):
+        if isinstance(v, str):
+            return [i.strip() for i in v.split(',')]
+        return v
 
     # Celery settings
     CELERY_BROKER_URL: str = Field(
@@ -169,8 +176,8 @@ class Settings(BaseSettings):
     @property
     def database_url_sync(self) -> str:
         """Get synchronous database URL for Alembic."""
-        if self.DATABASE_URL.startswith("postgresql://"):
-            return self.DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
+        if self.DATABASE_URL.startswith("postgresql+asyncpg://"):
+            return self.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
         return self.DATABASE_URL
 
 

@@ -16,12 +16,20 @@ sync_engine = create_engine(
     pool_recycle=300,
 )
 
-# Create async engine for application
+# Create async engine for PostgreSQL
 async_engine = create_async_engine(
     settings.DATABASE_URL,
-    pool_pre_ping=True,
-    pool_recycle=300,
     echo=settings.DEBUG,
+    pool_pre_ping=True,
+    pool_size=20,
+    max_overflow=40,
+    pool_recycle=3600,
+    pool_timeout=30,
+    connect_args={
+        "server_settings": {"application_name": settings.APP_NAME},
+        "command_timeout": 60,
+        "timeout": 60,
+    }
 )
 
 # Session factories

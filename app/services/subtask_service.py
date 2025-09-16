@@ -6,7 +6,6 @@ from typing import List, Optional, Dict, Any, Tuple
 from datetime import date, datetime
 from sqlalchemy import select, func, and_, or_, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.models.subtask import SubTask, SubTaskStatus
 from app.models.application import Application
@@ -134,7 +133,7 @@ class SubTaskService:
         """List subtasks with filtering and pagination."""
 
         # Build base query
-        query = select(SubTask).options(selectinload(SubTask.application))
+        query = select(SubTask)
         count_query = select(func.count(SubTask.id))
 
         # Apply filters

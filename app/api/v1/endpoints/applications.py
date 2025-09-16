@@ -41,6 +41,15 @@ async def create_application(
         )
 
 
+@router.get("/test")
+async def test_applications_endpoint(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Test endpoint to verify basic functionality."""
+    return {"message": "Applications endpoint is working", "user": current_user.email}
+
+
 @router.get("/", response_model=ApplicationListResponse)
 async def list_applications(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
@@ -83,15 +92,52 @@ async def list_applications(
         )
 
         # Calculate pagination info
-        total_pages = (total + limit - 1) // limit
+        total_pages = (total + limit - 1) // limit if total > 0 else 0
         page = (skip // limit) + 1
+
+        # Convert applications to response format without subtask counts for efficiency
+        items = []
+        for app in applications:
+            item_dict = {
+                "id": app.id,
+                "l2_id": app.l2_id,
+                "app_name": app.app_name,
+                "supervision_year": app.supervision_year,
+                "transformation_target": app.transformation_target,
+                "overall_status": app.overall_status,
+                "current_stage": app.current_stage,
+                "responsible_team": app.responsible_team,
+                "responsible_person": app.responsible_person,
+                "progress_percentage": app.progress_percentage,
+                "is_ak_completed": app.is_ak_completed,
+                "is_cloud_native_completed": app.is_cloud_native_completed,
+                "is_delayed": app.is_delayed,
+                "delay_days": app.delay_days,
+                "notes": app.notes,
+                "planned_requirement_date": app.planned_requirement_date,
+                "planned_release_date": app.planned_release_date,
+                "planned_tech_online_date": app.planned_tech_online_date,
+                "planned_biz_online_date": app.planned_biz_online_date,
+                "actual_requirement_date": app.actual_requirement_date,
+                "actual_release_date": app.actual_release_date,
+                "actual_tech_online_date": app.actual_tech_online_date,
+                "actual_biz_online_date": app.actual_biz_online_date,
+                "subtask_count": 0,  # Will be populated in detail view if needed
+                "completed_subtask_count": 0,  # Will be populated in detail view if needed
+                "completion_rate": 0.0,  # Will be populated in detail view if needed
+                "created_by": app.created_by,
+                "updated_by": app.updated_by,
+                "created_at": app.created_at,
+                "updated_at": app.updated_at
+            }
+            items.append(ApplicationResponse(**item_dict))
 
         return ApplicationListResponse(
             total=total,
             page=page,
             page_size=limit,
             total_pages=total_pages,
-            items=applications
+            items=items
         )
 
     except ValidationError as e:

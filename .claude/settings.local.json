@@ -16,7 +16,15 @@
       "Bash(curl:*)",
       "Bash(netstat:*)",
       "Bash(taskkill:*)",
-      "Bash(wmic process where ProcessId=16112 get CommandLine:*)"
+      "Bash(wmic process where ProcessId=16112 get CommandLine:*)",
+      "Bash(tasklist:*)",
+      "Bash(setup_postgresql.bat)",
+      "Bash(cmd:*)",
+      "Bash(psql:*)",
+      "Bash(where psql)",
+      "Bash(dir:*)",
+      "Bash(git reset:*)",
+      "Bash(del nul)"
     ],
     "deny": [],
     "ask": []

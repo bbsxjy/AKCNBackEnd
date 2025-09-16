@@ -44,6 +44,19 @@ router = APIRouter()
 notification_service = NotificationService()
 
 
+@router.get("/")
+async def get_notifications_simple(
+    unread_only: bool = Query(False),
+    limit: int = Query(10, ge=1, le=100),
+    current_user: User = Depends(deps.get_current_active_user)
+):
+    """
+    Simple notification endpoint that returns empty list.
+    This prevents frontend errors while the full notification system is being implemented.
+    """
+    return []
+
+
 @router.post("/delay-warning", response_model=NotificationResponse)
 async def send_delay_warning(
     *,

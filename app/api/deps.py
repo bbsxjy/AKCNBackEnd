@@ -50,12 +50,12 @@ async def get_current_user(
             # Create test admin user if not exists
             from app.models.user import UserRole
             user = User(
-                id=1,
-                employee_id="TEST001",
+                sso_user_id="SSO001",
+                username="admin",
                 email="admin@test.com",
                 full_name="Test Admin",
+                department="Platform",
                 role=UserRole.ADMIN,
-                team="Platform",
                 is_active=True
             )
             db.add(user)

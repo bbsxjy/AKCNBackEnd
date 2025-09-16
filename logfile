@@ -1,0 +1,36 @@
+2025-09-15 16:51:07.620 CST [19548] 日志:  正在启动 PostgreSQL 17.6 on x86_64-windows, compiled by msvc-19.44.35213, 64-bit
+2025-09-15 16:51:07.623 CST [19548] 日志:  无法绑定IPv4地址"127.0.0.1": Permission denied
+2025-09-15 16:51:07.624 CST [19548] 日志:  无法绑定IPv6地址"::1": Permission denied
+2025-09-15 16:51:07.624 CST [19548] 警告:  无法为 "localhost" 创建监听套接字
+2025-09-15 16:51:07.624 CST [19548] 致命错误:  无法创建TCP/IP套接字
+2025-09-15 16:51:07.626 CST [19548] 日志:  数据库系统已关闭
+2025-09-15 17:14:06.921 CST [23324] 日志:  正在启动 PostgreSQL 17.6 on x86_64-windows, compiled by msvc-19.44.35213, 64-bit
+2025-09-15 17:14:06.923 CST [23324] 日志:  无法绑定IPv4地址"127.0.0.1": Permission denied
+2025-09-15 17:14:06.923 CST [23324] 日志:  无法绑定IPv6地址"::1": Permission denied
+2025-09-15 17:14:06.923 CST [23324] 警告:  无法为 "localhost" 创建监听套接字
+2025-09-15 17:14:06.923 CST [23324] 致命错误:  无法创建TCP/IP套接字
+2025-09-15 17:14:06.926 CST [23324] 日志:  数据库系统已关闭
+2025-09-15 17:14:28.550 CST [24580] 日志:  正在启动 PostgreSQL 17.6 on x86_64-windows, compiled by msvc-19.44.35213, 64-bit
+2025-09-15 17:14:28.554 CST [24580] 日志:  正在监听IPv4地址"127.0.0.1"，端口 5432
+2025-09-15 17:14:28.554 CST [24580] 日志:  正在监听IPv6地址"::1"，端口 5432
+2025-09-15 17:14:28.607 CST [22372] 日志:  数据库上次关闭时间为 2025-09-15 16:50:43 CST
+2025-09-15 17:14:28.635 CST [24580] 日志:  数据库系统准备接受连接
+2025-09-15 17:14:39.174 CST [3300] 致命错误:  数据库 "bbsxj" 不存在
+2025-09-15 17:14:51.663 CST [14160] 致命错误:  角色 "postgres" 不存在
+2025-09-15 17:15:01.830 CST [11028] 閿欒:  瑙掕壊"bbsxj" 宸茬粡瀛樺湪
+2025-09-15 17:15:01.830 CST [11028] 璇彞:  CREATE ROLE bbsxj NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT LOGIN NOREPLICATION NOBYPASSRLS;
+2025-09-15 17:15:14.613 CST [884] 致命错误:  角色 "postgres" 不存在
+2025-09-15 17:15:14.638 CST [9172] 致命错误:  角色 "postgres" 不存在
+2025-09-15 17:15:41.448 CST [25520] 致命错误:  角色 "akcn_user" 不存在
+2025-09-15 17:16:18.839 CST [18776] 致命错误:  角色 "postgres" 不存在
+2025-09-15 17:19:28.606 CST [3724] 日志:  checkpoint starting: time
+2025-09-15 17:19:32.478 CST [3724] 日志:  checkpoint complete: wrote 38 buffers (0.2%); 0 WAL file(s) added, 0 removed, 0 recycled; write=3.797 s, sync=0.040 s, total=3.874 s; sync files=10, longest=0.006 s, average=0.004 s; distance=197 kB, estimate=197 kB; lsn=0/159EA80, redo lsn=0/159EA28
+2025-09-15 20:02:35.472 CST [25800] 致命错误:  角色 "postgres" 不存在
+2025-09-15 20:05:14.366 CST [24580] 日志:  接收到快速 (fast) 停止请求
+2025-09-15 20:05:14.368 CST [24796] 错误:  由于用户请求而正在取消查询
+2025-09-15 20:05:14.387 CST [24580] 日志:  中断任何激活事务
+2025-09-15 20:05:14.387 CST [24580] 日志:  后台工作进程 "logical replication launcher" (PID 24796) 已退出, 退出代码 1
+2025-09-15 20:05:14.413 CST [3724] 日志:  正在关闭
+2025-09-15 20:05:14.423 CST [3724] 日志:  checkpoint starting: shutdown immediate
+2025-09-15 20:05:14.443 CST [3724] 日志:  checkpoint complete: wrote 0 buffers (0.0%); 0 WAL file(s) added, 0 removed, 0 recycled; write=0.001 s, sync=0.001 s, total=0.031 s; sync files=0, longest=0.000 s, average=0.000 s; distance=0 kB, estimate=178 kB; lsn=0/159EB30, redo lsn=0/159EB30
+2025-09-15 20:05:14.472 CST [24580] 日志:  数据库系统已关闭

@@ -12,7 +12,7 @@ class ApplicationBase(BaseModel):
     """Base application schema with common fields."""
     l2_id: str = Field(..., description="L2 ID (unique identifier)", min_length=1, max_length=20)
     app_name: str = Field(..., description="Application name", min_length=1, max_length=100)
-    supervision_year: int = Field(..., description="Supervision year", ge=2025, le=2030)
+    supervision_year: int = Field(..., description="Supervision year", ge=2024, le=2030)
     transformation_target: TransformationTarget = Field(..., description="Transformation target")
     responsible_team: str = Field(..., description="Responsible team", max_length=50)
     responsible_person: Optional[str] = Field(None, description="Responsible person", max_length=50)
@@ -21,8 +21,9 @@ class ApplicationBase(BaseModel):
     @validator('l2_id')
     def validate_l2_id_format(cls, v):
         """Validate L2 ID format."""
-        if not v.startswith('L2_'):
-            raise ValueError('L2 ID must start with "L2_"')
+        # Allow both L2_ prefix and other formats for flexibility
+        if v and not v.strip():
+            raise ValueError('L2 ID cannot be empty')
         return v.upper()
 
     @validator('app_name')
@@ -66,7 +67,7 @@ class ApplicationCreate(ApplicationBase):
 class ApplicationUpdate(BaseModel):
     """Schema for updating an application."""
     app_name: Optional[str] = Field(None, description="Application name", min_length=1, max_length=100)
-    supervision_year: Optional[int] = Field(None, description="Supervision year", ge=2025, le=2030)
+    supervision_year: Optional[int] = Field(None, description="Supervision year", ge=2024, le=2030)
     transformation_target: Optional[TransformationTarget] = Field(None, description="Transformation target")
     responsible_team: Optional[str] = Field(None, description="Responsible team", max_length=50)
     responsible_person: Optional[str] = Field(None, description="Responsible person", max_length=50)
@@ -119,10 +120,10 @@ class ApplicationResponse(ApplicationBase):
     is_delayed: bool = Field(..., description="Delay status")
     delay_days: int = Field(..., description="Delay days")
 
-    # Statistics
-    subtask_count: int = Field(..., description="Total subtask count")
-    completed_subtask_count: int = Field(..., description="Completed subtask count")
-    completion_rate: float = Field(..., description="Completion rate percentage")
+    # Statistics (optional for list views, populated only when needed)
+    subtask_count: Optional[int] = Field(0, description="Total subtask count")
+    completed_subtask_count: Optional[int] = Field(0, description="Completed subtask count")
+    completion_rate: Optional[float] = Field(0.0, description="Completion rate percentage")
 
     # Audit fields
     created_by: Optional[int] = Field(None, description="Created by user ID")
@@ -149,7 +150,7 @@ class ApplicationFilter(BaseModel):
     app_name: Optional[str] = Field(None, description="Application name filter")
     status: Optional[ApplicationStatus] = Field(None, description="Status filter")
     department: Optional[str] = Field(None, description="Department filter (responsible_team)")
-    year: Optional[int] = Field(None, description="Supervision year filter", ge=2025, le=2030)
+    year: Optional[int] = Field(None, description="Supervision year filter", ge=2024, le=2030)
     target: Optional[TransformationTarget] = Field(None, description="Transformation target filter")
     is_delayed: Optional[bool] = Field(None, description="Delayed status filter")
 

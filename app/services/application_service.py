@@ -6,7 +6,6 @@ from typing import List, Optional, Dict, Any
 from datetime import date, datetime
 from sqlalchemy import select, func, and_, or_, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.models.application import Application, ApplicationStatus, TransformationTarget
 from app.models.user import User
@@ -70,7 +69,6 @@ class ApplicationService:
         """Get application by ID."""
         result = await db.execute(
             select(Application)
-            .options(selectinload(Application.subtasks))
             .where(Application.id == application_id)
         )
         return result.scalar_one_or_none()
@@ -135,7 +133,7 @@ class ApplicationService:
         """List applications with filtering and pagination."""
 
         # Build base query
-        query = select(Application).options(selectinload(Application.subtasks))
+        query = select(Application)
         count_query = select(func.count(Application.id))
 
         # Apply filters
