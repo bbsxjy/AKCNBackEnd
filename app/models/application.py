@@ -78,16 +78,26 @@ class Application(Base):
     @property
     def subtask_count(self) -> int:
         """Get total number of subtasks."""
-        return len(self.subtasks)
+        # Check if subtasks are loaded to avoid lazy loading in async context
+        if hasattr(self, '_sa_instance_state') and 'subtasks' not in self._sa_instance_state.committed_state:
+            return 0  # Return 0 if not loaded to avoid lazy loading
+        return len(self.subtasks) if self.subtasks else 0
 
     @property
     def completed_subtask_count(self) -> int:
         """Get number of completed subtasks."""
+        # Check if subtasks are loaded to avoid lazy loading in async context
+        if hasattr(self, '_sa_instance_state') and 'subtasks' not in self._sa_instance_state.committed_state:
+            return 0  # Return 0 if not loaded to avoid lazy loading
+        if not self.subtasks:
+            return 0
         return len([st for st in self.subtasks if st.task_status == "已完成"])
 
     @property
     def completion_rate(self) -> float:
         """Get completion rate as percentage."""
-        if self.subtask_count == 0:
+        count = self.subtask_count
+        if count == 0:
             return 0.0
-        return (self.completed_subtask_count / self.subtask_count) * 100
+        completed = self.completed_subtask_count
+        return (completed / count) * 100

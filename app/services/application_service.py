@@ -3,7 +3,7 @@ Application service layer
 """
 
 from typing import List, Optional, Dict, Any
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from sqlalchemy import select, func, and_, or_, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -103,7 +103,7 @@ class ApplicationService:
 
         # Update audit fields
         db_application.updated_by = updated_by
-        db_application.updated_at = datetime.utcnow()
+        db_application.updated_at = datetime.now(timezone.utc)
 
         # Recalculate status and progress
         await self._recalculate_application_status(db, db_application)
@@ -243,11 +243,15 @@ class ApplicationService:
     async def _recalculate_application_status(self, db: AsyncSession, application: Application):
         """Recalculate application status and progress based on subtasks."""
 
-        # Load subtasks if not already loaded
-        if not application.subtasks:
-            await db.refresh(application, ['subtasks'])
+        # Load subtasks from database
+        from app.models.subtask import SubTask
 
-        total_subtasks = len(application.subtasks)
+        subtasks_result = await db.execute(
+            select(SubTask).where(SubTask.application_id == application.id)
+        )
+        subtasks = subtasks_result.scalars().all()
+
+        total_subtasks = len(subtasks)
 
         if total_subtasks == 0:
             # No subtasks - status based on dates
@@ -256,7 +260,7 @@ class ApplicationService:
             return
 
         # Count completed subtasks
-        completed_subtasks = sum(1 for st in application.subtasks if st.task_status == "已完成")
+        completed_subtasks = sum(1 for st in subtasks if st.task_status == "已完成")
 
         # Calculate progress percentage
         application.progress_percentage = int((completed_subtasks / total_subtasks) * 100)
@@ -266,20 +270,20 @@ class ApplicationService:
             application.overall_status = ApplicationStatus.NOT_STARTED
         elif completed_subtasks == total_subtasks:
             application.overall_status = ApplicationStatus.COMPLETED
-        elif any(st.task_status == "业务上线中" for st in application.subtasks):
+        elif any(st.task_status == "业务上线中" for st in subtasks):
             application.overall_status = ApplicationStatus.BIZ_ONLINE
         else:
             application.overall_status = ApplicationStatus.DEV_IN_PROGRESS
 
         # Update transformation target completion flags
-        ak_subtasks = [st for st in application.subtasks if st.sub_target == "AK"]
-        cn_subtasks = [st for st in application.subtasks if st.sub_target == "云原生"]
+        ak_subtasks = [st for st in subtasks if st.sub_target == "AK"]
+        cn_subtasks = [st for st in subtasks if st.sub_target == "云原生"]
 
         application.is_ak_completed = all(st.task_status == "已完成" for st in ak_subtasks) if ak_subtasks else False
         application.is_cloud_native_completed = all(st.task_status == "已完成" for st in cn_subtasks) if cn_subtasks else False
 
         # Calculate delay status
-        today = date.today()
+        today = datetime.now(timezone.utc).date()
         application.is_delayed = False
         application.delay_days = 0
 

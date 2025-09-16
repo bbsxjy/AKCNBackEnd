@@ -3,7 +3,7 @@ SubTask service layer
 """
 
 from typing import List, Optional, Dict, Any, Tuple
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from sqlalchemy import select, func, and_, or_, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -102,7 +102,7 @@ class SubTaskService:
 
         # Update audit fields
         db_subtask.updated_by = updated_by
-        db_subtask.updated_at = datetime.utcnow()
+        db_subtask.updated_at = datetime.now(timezone.utc)
 
         # Auto-update progress based on status
         if 'task_status' in update_data:
@@ -313,7 +313,7 @@ class SubTaskService:
                     setattr(subtask, field, value)
 
                 subtask.updated_by = updated_by
-                subtask.updated_at = datetime.utcnow()
+                subtask.updated_at = datetime.now(timezone.utc)
 
                 # Auto-update progress if status changed
                 if 'task_status' in update_data:
@@ -338,7 +338,7 @@ class SubTaskService:
             if subtask:
                 subtask.task_status = bulk_status_update.new_status
                 subtask.updated_by = updated_by
-                subtask.updated_at = datetime.utcnow()
+                subtask.updated_at = datetime.now(timezone.utc)
 
                 # Auto-update progress if requested
                 if bulk_status_update.update_progress:
@@ -386,7 +386,7 @@ class SubTaskService:
                 subtask.task_status = SubTaskStatus.DEV_IN_PROGRESS
 
         subtask.updated_by = updated_by
-        subtask.updated_at = datetime.utcnow()
+        subtask.updated_at = datetime.now(timezone.utc)
 
         await db.commit()
         await db.refresh(subtask)

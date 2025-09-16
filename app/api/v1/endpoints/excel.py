@@ -114,40 +114,70 @@ async def import_subtasks_from_excel(
         )
 
 
-@router.get("/applications/export")
+@router.post("/export/applications")
 async def export_applications_to_excel(
-    export_request: ApplicationExportRequest = Depends(),
-    db: AsyncSession = Depends(get_db),
+    data: dict = {},
     current_user: User = Depends(require_roles([UserRole.ADMIN, UserRole.MANAGER, UserRole.EDITOR]))
 ):
-    """Export applications to Excel file."""
+    """Export applications to Excel"""
+    from datetime import datetime, timedelta
+    import uuid
+    import io
+    from openpyxl import Workbook
+    from fastapi.responses import Response
 
     try:
-        # Build filters
-        filters = {}
-        if export_request.supervision_year:
-            filters['supervision_year'] = export_request.supervision_year
-        if export_request.responsible_team:
-            filters['responsible_team'] = export_request.responsible_team
-        if export_request.overall_status:
-            filters['overall_status'] = export_request.overall_status
-        if export_request.transformation_target:
-            filters['transformation_target'] = export_request.transformation_target
+        from sqlalchemy import select
+        from app.models.application import Application
+        from app.db.session import AsyncSessionLocal
 
-        # Generate Excel file
-        excel_data = await excel_service.export_applications_to_excel(
-            db=db,
-            application_ids=export_request.application_ids,
-            filters=filters,
-            template_style=export_request.template_style
-        )
+        # Get applications data
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(Application))
+            applications = result.scalars().all()
+
+        # Create Excel workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Applications"
+
+        # Add headers
+        headers = [
+            "ID", "L2_ID", "应用名称", "监管年份", "转型目标",
+            "负责团队", "负责人", "整体状态", "进度百分比",
+            "创建时间", "更新时间"
+        ]
+        ws.append(headers)
+
+        # Add data
+        for app in applications:
+            row = [
+                app.id,
+                app.l2_id,
+                app.app_name,
+                app.supervision_year,
+                app.transformation_target,
+                app.responsible_team,
+                app.responsible_person or "",
+                app.overall_status,
+                app.progress_percentage,
+                app.created_at.isoformat() if app.created_at else "",
+                app.updated_at.isoformat() if app.updated_at else ""
+            ]
+            ws.append(row)
+
+        # Save to memory
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
 
         # Generate filename
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"applications_export_{timestamp}.xlsx"
 
+        # Return file as response
         return Response(
-            content=excel_data,
+            content=output.getvalue(),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )

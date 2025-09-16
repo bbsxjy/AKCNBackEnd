@@ -177,14 +177,14 @@ async def get_applications_by_team(
     return applications
 
 
-@router.get("/{application_id}", response_model=ApplicationResponse)
+@router.get("/{app_id}", response_model=ApplicationResponse)
 async def get_application(
-    application_id: int,
+    app_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Get application by ID."""
-    db_application = await application_service.get_application(db=db, application_id=application_id)
+    db_application = await application_service.get_application(db=db, application_id=app_id)
     if not db_application:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -209,9 +209,9 @@ async def get_application_by_l2_id(
     return db_application
 
 
-@router.put("/{application_id}", response_model=ApplicationResponse)
+@router.put("/{app_id}", response_model=ApplicationResponse)
 async def update_application(
-    application_id: int,
+    app_id: int,
     application_data: ApplicationUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_roles([UserRole.ADMIN, UserRole.MANAGER, UserRole.EDITOR]))
@@ -220,7 +220,7 @@ async def update_application(
     try:
         db_application = await application_service.update_application(
             db=db,
-            application_id=application_id,
+            application_id=app_id,
             application_data=application_data,
             updated_by=current_user.id
         )
@@ -237,14 +237,14 @@ async def update_application(
         )
 
 
-@router.delete("/{application_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{app_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_application(
-    application_id: int,
+    app_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_roles([UserRole.ADMIN, UserRole.MANAGER]))
 ):
     """Delete an application."""
-    success = await application_service.delete_application(db=db, application_id=application_id)
+    success = await application_service.delete_application(db=db, application_id=app_id)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

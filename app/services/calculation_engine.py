@@ -3,7 +3,7 @@ Auto-Calculation Engine for application status and progress updates
 """
 
 from typing import List, Dict, Any, Optional
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -41,7 +41,7 @@ class CalculationEngine:
         await self._calculate_application_metrics(application)
 
         # Save changes
-        application.updated_at = datetime.utcnow()
+        application.updated_at = datetime.now(timezone.utc)
         await db.commit()
         await db.refresh(application)
 
@@ -60,7 +60,7 @@ class CalculationEngine:
         updated_count = 0
         for application in applications:
             await self._calculate_application_metrics(application)
-            application.updated_at = datetime.utcnow()
+            application.updated_at = datetime.now(timezone.utc)
             updated_count += 1
 
         await db.commit()
@@ -325,7 +325,7 @@ class CalculationEngine:
                         "subtask_id": subtask.id,
                         "module_name": subtask.module_name,
                         "block_reason": subtask.block_reason,
-                        "days_blocked": (datetime.utcnow().date() - subtask.updated_at.date()).days,
+                        "days_blocked": (datetime.now(timezone.utc).date() - subtask.updated_at.date()).days,
                         "assigned_to": subtask.assigned_to,
                         "priority": subtask.priority
                     })
