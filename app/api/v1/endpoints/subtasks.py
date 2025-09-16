@@ -263,7 +263,7 @@ async def delete_subtask(
     current_user: User = Depends(require_roles([UserRole.ADMIN, UserRole.MANAGER]))
 ):
     """Delete a subtask."""
-    success = await subtask_service.delete_subtask(db=db, subtask_id=subtask_id)
+    success = await subtask_service.delete_subtask(db=db, subtask_id=subtask_id, deleted_by=current_user.id)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

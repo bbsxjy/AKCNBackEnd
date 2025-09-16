@@ -244,7 +244,7 @@ async def delete_application(
     current_user: User = Depends(require_roles([UserRole.ADMIN, UserRole.MANAGER]))
 ):
     """Delete an application."""
-    success = await application_service.delete_application(db=db, application_id=app_id)
+    success = await application_service.delete_application(db=db, application_id=app_id, deleted_by=current_user.id)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

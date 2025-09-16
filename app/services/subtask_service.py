@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 from app.models.subtask import SubTask, SubTaskStatus
 from app.models.application import Application
 from app.models.user import User
+from app.models.audit_log import AuditOperation
 from app.schemas.subtask import (
     SubTaskCreate, SubTaskUpdate, SubTaskFilter, SubTaskSort,
     SubTaskStatistics, SubTaskBulkUpdate, SubTaskBulkStatusUpdate,
@@ -24,6 +25,16 @@ class SubTaskService:
 
     def __init__(self):
         self.model = SubTask
+        # Lazy import to avoid circular imports
+        self._audit_service = None
+
+    @property
+    def audit_service(self):
+        """Lazy load audit service to avoid circular imports."""
+        if self._audit_service is None:
+            from app.services.audit_service import AuditService
+            self._audit_service = AuditService()
+        return self._audit_service
 
     async def create_subtask(
         self,
@@ -71,6 +82,19 @@ class SubTaskService:
         db.add(db_subtask)
         await db.commit()
         await db.refresh(db_subtask)
+
+        # Create audit log for the new subtask
+        await self.audit_service.create_audit_log(
+            db=db,
+            table_name="sub_tasks",
+            record_id=db_subtask.id,
+            operation=AuditOperation.INSERT,
+            old_values=None,
+            new_values=self._serialize_subtask(db_subtask),
+            user_id=created_by,
+            reason="SubTask created"
+        )
+
         return db_subtask
 
     async def get_subtask(self, db: AsyncSession, subtask_id: int) -> Optional[SubTask]:
@@ -96,6 +120,9 @@ class SubTaskService:
         if not db_subtask:
             return None
 
+        # Store old values for audit
+        old_values = self._serialize_subtask(db_subtask)
+
         # Update fields
         update_data = subtask_data.model_dump(exclude_unset=True)
         for field, value in update_data.items():
@@ -111,16 +138,47 @@ class SubTaskService:
 
         await db.commit()
         await db.refresh(db_subtask)
+
+        # Create audit log for the subtask update
+        new_values = self._serialize_subtask(db_subtask)
+        await self.audit_service.create_audit_log(
+            db=db,
+            table_name="sub_tasks",
+            record_id=db_subtask.id,
+            operation=AuditOperation.UPDATE,
+            old_values=old_values,
+            new_values=new_values,
+            user_id=updated_by,
+            reason="SubTask updated"
+        )
+
         return db_subtask
 
-    async def delete_subtask(self, db: AsyncSession, subtask_id: int) -> bool:
+    async def delete_subtask(self, db: AsyncSession, subtask_id: int, deleted_by: int = None) -> bool:
         """Delete a subtask."""
         db_subtask = await self.get_subtask(db, subtask_id)
         if not db_subtask:
             return False
 
+        # Store old values for audit
+        old_values = self._serialize_subtask(db_subtask)
+
         await db.delete(db_subtask)
         await db.commit()
+
+        # Create audit log for the subtask deletion
+        if deleted_by:
+            await self.audit_service.create_audit_log(
+                db=db,
+                table_name="sub_tasks",
+                record_id=subtask_id,
+                operation=AuditOperation.DELETE,
+                old_values=old_values,
+                new_values=None,
+                user_id=deleted_by,
+                reason="SubTask deleted"
+            )
+
         return True
 
     async def list_subtasks(
@@ -542,3 +600,16 @@ class SubTaskService:
             'by_status': by_status,
             'assignee': assignee
         }
+
+    def _serialize_subtask(self, subtask: SubTask) -> Dict[str, Any]:
+        """Serialize a SubTask object to dictionary for audit logging."""
+        result = {}
+        for column in subtask.__table__.columns:
+            value = getattr(subtask, column.name)
+            # Handle datetime serialization
+            if isinstance(value, datetime):
+                value = value.isoformat()
+            elif isinstance(value, date):
+                value = value.isoformat()
+            result[column.name] = value
+        return result

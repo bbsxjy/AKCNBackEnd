@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.application import Application, ApplicationStatus, TransformationTarget
 from app.models.user import User
+from app.models.audit_log import AuditOperation
 from app.schemas.application import (
     ApplicationCreate, ApplicationUpdate, ApplicationFilter,
     ApplicationSort, ApplicationStatistics
@@ -22,6 +23,16 @@ class ApplicationService:
 
     def __init__(self):
         self.model = Application
+        # Lazy import to avoid circular imports
+        self._audit_service = None
+
+    @property
+    def audit_service(self):
+        """Lazy load audit service to avoid circular imports."""
+        if self._audit_service is None:
+            from app.services.audit_service import AuditService
+            self._audit_service = AuditService()
+        return self._audit_service
 
     async def create_application(
         self,
@@ -64,6 +75,19 @@ class ApplicationService:
         db.add(db_application)
         await db.commit()
         await db.refresh(db_application)
+
+        # Create audit log for the new application
+        await self.audit_service.create_audit_log(
+            db=db,
+            table_name="applications",
+            record_id=db_application.id,
+            operation=AuditOperation.INSERT,
+            old_values=None,
+            new_values=self._serialize_application(db_application),
+            user_id=created_by,
+            reason="Application created"
+        )
+
         return db_application
 
     async def get_application(self, db: AsyncSession, application_id: int) -> Optional[Application]:
@@ -97,6 +121,9 @@ class ApplicationService:
         if not db_application:
             return None
 
+        # Store old values for audit
+        old_values = self._serialize_application(db_application)
+
         # Update fields
         update_data = application_data.model_dump(exclude_unset=True)
         for field, value in update_data.items():
@@ -111,16 +138,47 @@ class ApplicationService:
 
         await db.commit()
         await db.refresh(db_application)
+
+        # Create audit log for the application update
+        new_values = self._serialize_application(db_application)
+        await self.audit_service.create_audit_log(
+            db=db,
+            table_name="applications",
+            record_id=db_application.id,
+            operation=AuditOperation.UPDATE,
+            old_values=old_values,
+            new_values=new_values,
+            user_id=updated_by,
+            reason="Application updated"
+        )
+
         return db_application
 
-    async def delete_application(self, db: AsyncSession, application_id: int) -> bool:
+    async def delete_application(self, db: AsyncSession, application_id: int, deleted_by: int = None) -> bool:
         """Delete an application."""
         db_application = await self.get_application(db, application_id)
         if not db_application:
             return False
 
+        # Store old values for audit
+        old_values = self._serialize_application(db_application)
+
         await db.delete(db_application)
         await db.commit()
+
+        # Create audit log for the application deletion
+        if deleted_by:
+            await self.audit_service.create_audit_log(
+                db=db,
+                table_name="applications",
+                record_id=application_id,
+                operation=AuditOperation.DELETE,
+                old_values=old_values,
+                new_values=None,
+                user_id=deleted_by,
+                reason="Application deleted"
+            )
+
         return True
 
     async def list_applications(
@@ -329,3 +387,16 @@ class ApplicationService:
             .order_by(desc(Application.delay_days))
         )
         return result.scalars().all()
+
+    def _serialize_application(self, application: Application) -> Dict[str, Any]:
+        """Serialize an Application object to dictionary for audit logging."""
+        result = {}
+        for column in application.__table__.columns:
+            value = getattr(application, column.name)
+            # Handle datetime serialization
+            if isinstance(value, datetime):
+                value = value.isoformat()
+            elif isinstance(value, date):
+                value = value.isoformat()
+            result[column.name] = value
+        return result
