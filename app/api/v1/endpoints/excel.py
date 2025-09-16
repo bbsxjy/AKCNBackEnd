@@ -22,7 +22,7 @@ router = APIRouter()
 excel_service = ExcelService()
 
 
-@router.post("/applications/import", response_model=ExcelImportResult)
+@router.post("/import/applications", response_model=ExcelImportResult)
 async def import_applications_from_excel(
     file: UploadFile = File(..., description="Excel file with applications data"),
     request: ApplicationImportRequest = Depends(),
@@ -68,7 +68,7 @@ async def import_applications_from_excel(
         )
 
 
-@router.post("/subtasks/import", response_model=ExcelImportResult)
+@router.post("/import/subtasks", response_model=ExcelImportResult)
 async def import_subtasks_from_excel(
     file: UploadFile = File(..., description="Excel file with subtasks data"),
     request: SubTaskImportRequest = Depends(),
