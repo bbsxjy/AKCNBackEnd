@@ -6,6 +6,7 @@ from typing import List, Optional, Dict, Any
 from datetime import date, datetime, timezone
 from sqlalchemy import select, func, and_, or_, desc, asc
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.application import Application, ApplicationStatus, TransformationTarget
 from app.models.user import User
