@@ -1032,6 +1032,8 @@ class ExcelService:
         """Validate subtasks data."""
 
         errors = []
+        warnings = []
+        rows_to_skip = []  # Track rows that will be skipped
 
         # Get valid application L2 IDs
         app_result = await db.execute(select(Application.l2_id))
@@ -1046,6 +1048,9 @@ class ExcelService:
         df_l2_ids = df['application_l2_id'].dropna().unique() if 'application_l2_id' in df.columns else []
         print(f"DEBUG: L2 IDs in Excel data: {list(df_l2_ids)[:10]}")
 
+        # Count rows with empty L2 ID
+        empty_l2_count = 0
+
         for index, row in df.iterrows():
             row_num = index + 2  # Excel row number
 
@@ -1053,25 +1058,17 @@ class ExcelService:
             if index < 3:
                 print(f"DEBUG: Row {row_num} data: {dict(row)}")
 
-            # Check required fields
-            for field in self.config.SUBTASK_REQUIRED:
-                field_value = row.get(field)
-                print(f"DEBUG: Checking required field '{field}' for row {row_num}: value='{field_value}', type={type(field_value)}")
-
-                if pd.isna(field_value) or field_value == '' or field_value is None:
-                    error_msg = f'必填字段不能为空: {field}'
-                    print(f"DEBUG: ❌ Required field validation failed: {error_msg}")
-                    errors.append({
-                        'row': row_num,
-                        'column': self._get_column_name(field, self.config.SUBTASK_FIELDS),
-                        'message': error_msg,
-                        'value': field_value
-                    })
-                else:
-                    print(f"DEBUG: ✓ Required field '{field}' passed validation")
-
-            # Validate and normalize application L2 ID
+            # Check if L2 ID is empty - if so, skip this row entirely
             app_l2_id = row.get('application_l2_id')
+            if pd.isna(app_l2_id) or app_l2_id == '' or app_l2_id is None:
+                empty_l2_count += 1
+                rows_to_skip.append(row_num)
+                # Don't add this as an error, just skip the row
+                if empty_l2_count <= 5:  # Only log first 5 to avoid spam
+                    print(f"DEBUG: Row {row_num} will be skipped (empty L2 ID)")
+                continue  # Skip validation for this row entirely
+
+            # L2 ID is not empty at this point, proceed with validation
             print(f"DEBUG: Row {row_num} L2 ID check: original='{app_l2_id}'")
 
             if app_l2_id:
@@ -1142,11 +1139,21 @@ class ExcelService:
                     'value': progress
                 })
 
-        print(f"DEBUG: Validation completed. Total errors: {len(errors)}")
+        print(f"DEBUG: Validation completed. Total errors: {len(errors)}, Rows to skip: {len(rows_to_skip)}")
+        if empty_l2_count > 0:
+            print(f"DEBUG: {empty_l2_count} rows will be skipped due to empty L2 ID")
         if errors:
             print(f"DEBUG: First 3 validation errors:")
             for i, error in enumerate(errors[:3]):
                 print(f"DEBUG:   Error {i+1}: Row {error['row']} - {error['message']}")
+
+        # Add warning about skipped rows (not as error, just informational)
+        if len(rows_to_skip) > 0:
+            warnings.append({
+                'type': 'info',
+                'message': f'{len(rows_to_skip)} 行将被跳过（L2 ID为空）',
+                'rows_skipped': rows_to_skip[:10]  # Show first 10 skipped rows
+            })
 
         return errors
 
@@ -1238,6 +1245,11 @@ class ExcelService:
                 skipped += 1
                 continue
 
+        # Log final statistics
+        print(f"DEBUG: Import completed - Imported: {imported}, Updated: {updated}, Skipped: {skipped}")
+        if skipped > 0:
+            print(f"DEBUG: {skipped} rows were skipped")
+
         return {
             'imported': imported,
             'updated': updated,
@@ -1259,6 +1271,14 @@ class ExcelService:
         for index, row in df.iterrows():
             try:
                 app_l2_id = row.get('application_l2_id')
+
+                # Skip rows with empty L2 ID
+                if pd.isna(app_l2_id) or app_l2_id == '' or app_l2_id is None:
+                    skipped += 1
+                    if skipped <= 5:  # Log first 5 skipped rows
+                        print(f"DEBUG: Skipping row {index + 2} - empty L2 ID")
+                    continue
+
                 application_id = app_id_map.get(app_l2_id)
 
                 # 如果应用不存在，自动创建placeholder应用
@@ -1367,6 +1387,11 @@ class ExcelService:
                 await db.rollback()
                 skipped += 1
                 continue
+
+        # Log final statistics
+        print(f"DEBUG: Import completed - Imported: {imported}, Updated: {updated}, Skipped: {skipped}")
+        if skipped > 0:
+            print(f"DEBUG: {skipped} rows were skipped")
 
         return {
             'imported': imported,
