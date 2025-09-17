@@ -645,7 +645,7 @@ class ExcelService:
         updated = 0
         skipped = 0
 
-        for _, row in df.iterrows():
+        for index, row in df.iterrows():
             try:
                 l2_id = row.get('l2_id')
 
@@ -695,15 +695,29 @@ class ExcelService:
                     if 'updated_by' not in app_data:
                         app_data['updated_by'] = user.id
 
+                    # 确保必需字段有默认值
+                    if 'responsible_team' not in app_data or not app_data['responsible_team']:
+                        app_data['responsible_team'] = '待分配'
+                    if 'app_name' not in app_data or not app_data['app_name']:
+                        app_data['app_name'] = f'应用_{app_data["l2_id"]}'
+                    if 'supervision_year' not in app_data or not app_data['supervision_year']:
+                        app_data['supervision_year'] = 2024
+                    if 'transformation_target' not in app_data or not app_data['transformation_target']:
+                        app_data['transformation_target'] = 'AK'
+
                     new_app = Application(**app_data)
                     db.add(new_app)
                     imported += 1
 
-            except Exception as e:
-                print(f"Error importing row: {e}")
-                skipped += 1
+                # 每处理一行就提交一次，避免批量rollback
+                await db.commit()
 
-        await db.commit()
+            except Exception as e:
+                print(f"Error importing row {index + 2}: {e}")
+                # 遇到错误时rollback当前事务，继续处理下一行
+                await db.rollback()
+                skipped += 1
+                continue
 
         return {
             'imported': imported,
