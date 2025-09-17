@@ -38,8 +38,33 @@ class ExcelValidationError(Exception):
 class ExcelMappingConfig:
     """Configuration for Excel field mappings."""
 
-    # Application field mappings
+    # Application field mappings (支持前端发送的英文字段名)
     APPLICATION_FIELDS = {
+        # 前端发送的英文字段名
+        'application_id': 'l2_id',
+        'application_name': 'app_name',
+        'supervision_year': 'supervision_year',
+        'transformation_target': 'transformation_target',
+        'current_stage': 'current_stage',
+        'status': 'overall_status',
+        'responsible_team': 'responsible_team',
+        'responsible_person': 'responsible_person',
+        'progress_percentage': 'progress_percentage',
+        'planned_requirement_date': 'planned_requirement_date',
+        'planned_release_date': 'planned_release_date',
+        'planned_tech_online_date': 'planned_tech_online_date',
+        'planned_biz_online_date': 'planned_biz_online_date',
+        'actual_requirement_date': 'actual_requirement_date',
+        'actual_release_date': 'actual_release_date',
+        'actual_tech_online_date': 'actual_tech_online_date',
+        'actual_biz_online_date': 'actual_biz_online_date',
+        'notes': 'notes',
+        'business_domain': 'business_domain',
+        'business_subdomain': 'business_subdomain',
+        'service_tier': 'service_tier',
+        'priority': 'priority',
+        'delay_status': 'delay_status',
+        # 保留中文字段名兼容性
         'L2 ID': 'l2_id',
         '应用名称': 'app_name',
         '监管年': 'supervision_year',
@@ -82,8 +107,8 @@ class ExcelMappingConfig:
         '备注': 'notes'
     }
 
-    # Required fields
-    APPLICATION_REQUIRED = ['l2_id', 'app_name', 'supervision_year', 'transformation_target', 'responsible_team']
+    # Required fields (调整为更宽松的验证，适配前端数据)
+    APPLICATION_REQUIRED = ['l2_id']  # 只要求L2 ID为必填，其他字段可以为空
     SUBTASK_REQUIRED = ['application_l2_id', 'module_name', 'sub_target']
 
     # Data type mappings
@@ -356,13 +381,19 @@ class ExcelService:
                 break
             header_row += 1
 
+        print(f"DEBUG: Found headers at row {header_row}: {headers[:10]}")  # 调试信息
+
         # Map headers to database fields
         column_mapping = {}
         for i, header in enumerate(headers):
             if header in field_mapping:
                 column_mapping[i] = field_mapping[header]
+                print(f"DEBUG: Mapped header '{header}' -> '{field_mapping[header]}'")  # 调试信息
+
+        print(f"DEBUG: Column mapping: {column_mapping}")  # 调试信息
 
         # Extract data rows
+        row_count = 0
         for row in worksheet.iter_rows(min_row=header_row + 1):
             row_data = {}
             has_data = False
@@ -381,7 +412,11 @@ class ExcelService:
 
             if has_data:
                 data.append(row_data)
+                row_count += 1
+                if row_count <= 2:  # 只打印前2行的调试信息
+                    print(f"DEBUG: Row {row_count} data: {row_data}")
 
+        print(f"DEBUG: Total rows extracted: {len(data)}")  # 调试信息
         return pd.DataFrame(data)
 
     def _convert_cell_value(self, value: Any, field_name: str) -> Any:
@@ -450,15 +485,15 @@ class ExcelService:
                         'value': row.get(field)
                     })
 
-            # Validate L2 ID format
+            # Validate and normalize L2 ID format
             l2_id = row.get('l2_id')
-            if l2_id and not str(l2_id).startswith('L2_'):
-                errors.append({
-                    'row': row_num,
-                    'column': 'L2 ID',
-                    'message': 'L2 ID必须以"L2_"开头',
-                    'value': l2_id
-                })
+            if l2_id:
+                l2_id_str = str(l2_id).strip()
+                # 如果不以L2_开头，自动添加前缀
+                if not l2_id_str.startswith('L2_'):
+                    normalized_id = f'L2_{l2_id_str}'
+                    # 更新DataFrame中的值
+                    df.at[index, 'l2_id'] = normalized_id
 
             # Validate supervision year
             year = row.get('supervision_year')
@@ -470,25 +505,41 @@ class ExcelService:
                     'value': year
                 })
 
-            # Validate transformation target
+            # Validate transformation target (支持前端发送的值)
             target = row.get('transformation_target')
-            if target and target not in [t.value for t in TransformationTarget]:
-                errors.append({
-                    'row': row_num,
-                    'column': '转型目标',
-                    'message': f'转型目标必须是: {", ".join([t.value for t in TransformationTarget])}',
-                    'value': target
-                })
+            if target:
+                # 标准化转型目标值
+                target_mapping = {
+                    'cloud_native': TransformationTarget.CLOUD_NATIVE.value,
+                    'AK': TransformationTarget.AK.value,
+                    'ak': TransformationTarget.AK.value,
+                    '云原生': TransformationTarget.CLOUD_NATIVE.value,
+                    'Cloud Native': TransformationTarget.CLOUD_NATIVE.value
+                }
 
-            # Validate status
+                if target in target_mapping:
+                    df.at[index, 'transformation_target'] = target_mapping[target]
+                elif target not in [t.value for t in TransformationTarget]:
+                    # 如果不匹配，使用默认值
+                    df.at[index, 'transformation_target'] = TransformationTarget.AK.value
+
+            # Validate status (支持前端发送的值)
             status = row.get('overall_status')
-            if status and status not in [s.value for s in ApplicationStatus]:
-                errors.append({
-                    'row': row_num,
-                    'column': '整体状态',
-                    'message': f'状态必须是: {", ".join([s.value for s in ApplicationStatus])}',
-                    'value': status
-                })
+            if status:
+                # 标准化状态值
+                status_mapping = {
+                    'in_progress': '研发进行中',
+                    'completed': '全部完成',
+                    'not_started': '待启动',
+                    'biz_online': '业务上线中',
+                    '正常': '研发进行中'  # 前端发送的"正常"状态
+                }
+
+                if status in status_mapping:
+                    df.at[index, 'overall_status'] = status_mapping[status]
+                elif status not in [s.value for s in ApplicationStatus]:
+                    # 如果不匹配，使用默认值
+                    df.at[index, 'overall_status'] = '研发进行中'
 
             # Validate progress percentage
             progress = row.get('progress_percentage')
@@ -605,15 +656,45 @@ class ExcelService:
                 existing_app = existing.scalar_one_or_none()
 
                 if existing_app:
-                    # Update existing application
+                    # Update existing application (只更新Application模型支持的字段)
+                    application_model_fields = {
+                        'l2_id', 'app_name', 'supervision_year', 'transformation_target',
+                        'current_stage', 'overall_status', 'responsible_team', 'responsible_person',
+                        'progress_percentage', 'planned_requirement_date', 'planned_release_date',
+                        'planned_tech_online_date', 'planned_biz_online_date', 'actual_requirement_date',
+                        'actual_release_date', 'actual_tech_online_date', 'actual_biz_online_date',
+                        'is_delayed', 'delay_days', 'notes'
+                    }
+
                     for field, value in row.items():
-                        if value is not None and hasattr(existing_app, field):
+                        if field in application_model_fields and value is not None and value != '' and hasattr(existing_app, field):
                             setattr(existing_app, field, value)
 
+                    # 更新修改者信息
+                    existing_app.updated_by = user.id
                     updated += 1
                 else:
-                    # Create new application
-                    app_data = {k: v for k, v in row.items() if v is not None}
+                    # Create new application (只包含Application模型支持的字段)
+                    app_data = {}
+                    application_model_fields = {
+                        'l2_id', 'app_name', 'supervision_year', 'transformation_target',
+                        'current_stage', 'overall_status', 'responsible_team', 'responsible_person',
+                        'progress_percentage', 'planned_requirement_date', 'planned_release_date',
+                        'planned_tech_online_date', 'planned_biz_online_date', 'actual_requirement_date',
+                        'actual_release_date', 'actual_tech_online_date', 'actual_biz_online_date',
+                        'is_delayed', 'delay_days', 'notes'
+                    }
+
+                    for k, v in row.items():
+                        if k in application_model_fields and v is not None and v != '':
+                            app_data[k] = v
+
+                    # 添加必需的默认值
+                    if 'created_by' not in app_data:
+                        app_data['created_by'] = user.id
+                    if 'updated_by' not in app_data:
+                        app_data['updated_by'] = user.id
+
                     new_app = Application(**app_data)
                     db.add(new_app)
                     imported += 1
