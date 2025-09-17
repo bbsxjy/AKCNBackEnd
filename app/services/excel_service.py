@@ -85,8 +85,43 @@ class ExcelMappingConfig:
         '备注': 'notes'
     }
 
-    # SubTask field mappings
+    # SubTask field mappings (支持前端发送的英文字段名)
     SUBTASK_FIELDS = {
+        # 前端发送的英文字段名 (常见变体)
+        'application_l2_id': 'application_l2_id',
+        'app_l2_id': 'application_l2_id',  # 前端可能简化的字段名
+        'l2_id': 'application_l2_id',      # 另一种可能的简化
+        'module_name': 'module_name',
+        'module': 'module_name',           # 简化版本
+        'sub_target': 'sub_target',
+        'target': 'sub_target',            # 简化版本
+        'transformation_target': 'sub_target',  # 完整版本
+        'version_name': 'version_name',
+        'version': 'version_name',         # 简化版本
+        'task_status': 'task_status',
+        'status': 'task_status',           # 简化版本
+        'progress_percentage': 'progress_percentage',
+        'progress': 'progress_percentage', # 简化版本
+        'is_blocked': 'is_blocked',
+        'blocked': 'is_blocked',           # 简化版本
+        'block_reason': 'block_reason',
+        'planned_requirement_date': 'planned_requirement_date',
+        'planned_release_date': 'planned_release_date',
+        'planned_tech_online_date': 'planned_tech_online_date',
+        'planned_biz_online_date': 'planned_biz_online_date',
+        'actual_requirement_date': 'actual_requirement_date',
+        'actual_release_date': 'actual_release_date',
+        'actual_tech_online_date': 'actual_tech_online_date',
+        'actual_biz_online_date': 'actual_biz_online_date',
+        'estimated_hours': 'estimated_hours',
+        'work_estimate': 'estimated_hours', # 别名
+        'assigned_to': 'assigned_to',
+        'assignee': 'assigned_to',         # 别名
+        'responsible_person': 'assigned_to', # 别名
+        'notes': 'technical_notes',
+        'remarks': 'technical_notes',      # 别名
+        'description': 'technical_notes',  # 别名
+        # 保留中文字段名兼容性
         '应用L2 ID': 'application_l2_id',
         '模块名称': 'module_name',
         '子目标': 'sub_target',
@@ -103,13 +138,14 @@ class ExcelMappingConfig:
         '实际发布日期': 'actual_release_date',
         '实际技术上线日期': 'actual_tech_online_date',
         '实际业务上线日期': 'actual_biz_online_date',
-        '工作量估算': 'work_estimate',
-        '备注': 'notes'
+        '工作量估算': 'estimated_hours',
+        '负责人': 'assigned_to',
+        '备注': 'technical_notes'
     }
 
     # Required fields (调整为更宽松的验证，适配前端数据)
     APPLICATION_REQUIRED = ['l2_id']  # 只要求L2 ID为必填，其他字段可以为空
-    SUBTASK_REQUIRED = ['application_l2_id', 'module_name', 'sub_target']
+    SUBTASK_REQUIRED = ['application_l2_id']  # 只要求应用L2 ID为必填，其他字段可以为空并设置默认值
 
     # Data type mappings
     DATE_FIELDS = [
@@ -117,7 +153,7 @@ class ExcelMappingConfig:
         'actual_requirement_date', 'actual_release_date', 'actual_tech_online_date', 'actual_biz_online_date'
     ]
 
-    INTEGER_FIELDS = ['supervision_year', 'progress_percentage', 'work_estimate']
+    INTEGER_FIELDS = ['supervision_year', 'progress_percentage', 'estimated_hours', 'actual_hours', 'priority']
     BOOLEAN_FIELDS = ['is_blocked', 'is_ak_completed', 'is_cloud_native_completed']
 
 
@@ -195,51 +231,120 @@ class ExcelService:
         user: User,
         validate_only: bool = False
     ) -> Dict[str, Any]:
-        """Import subtasks from Excel file."""
+        """Import subtasks from Excel file with support for two-sheet import."""
 
         try:
             # Load workbook
             workbook = load_workbook(io.BytesIO(file_content), data_only=True)
+            print(f"DEBUG: Loaded workbook with sheets: {workbook.sheetnames}")
 
-            # Process the first worksheet or find SubTasks sheet
-            sheet_name = self._find_subtasks_sheet(workbook)
-            worksheet = workbook[sheet_name]
+            # Check if this is a two-sheet import (applications + subtasks)
+            has_applications_sheet = any(keyword in sheet_name.lower() for sheet_name in workbook.sheetnames
+                                       for keyword in ['总追踪表', '应用', 'application', 'app'])
+            has_subtasks_sheet = any(keyword in sheet_name.lower() for sheet_name in workbook.sheetnames
+                                   for keyword in ['子追踪表', '子任务', 'subtask', 'task'])
 
-            # Convert to DataFrame
-            df = self._worksheet_to_dataframe(worksheet, self.config.SUBTASK_FIELDS)
+            print(f"DEBUG: has_applications_sheet: {has_applications_sheet}")
+            print(f"DEBUG: has_subtasks_sheet: {has_subtasks_sheet}")
 
-            # Validate data
-            validation_errors = await self._validate_subtasks_data(db, df)
+            total_app_rows = 0
+            total_subtask_rows = 0
+            all_validation_errors = []
+            app_results = {'imported': 0, 'updated': 0, 'skipped': 0}
+            subtask_results = {'imported': 0, 'updated': 0, 'skipped': 0}
 
-            if validation_errors and not validate_only:
+            # Import applications first if both sheets exist
+            if has_applications_sheet:
+                app_sheet_name = self._find_applications_sheet(workbook)
+                app_worksheet = workbook[app_sheet_name]
+                app_df = self._worksheet_to_dataframe(app_worksheet, self.config.APPLICATION_FIELDS)
+
+                if len(app_df) > 0:
+                    total_app_rows = len(app_df)
+                    app_validation_errors = await self._validate_applications_data(db, app_df)
+                    all_validation_errors.extend([{**error, 'sheet': '总追踪表'} for error in app_validation_errors])
+
+                    if not validate_only and len(app_validation_errors) == 0:
+                        app_results = await self._import_applications_data(db, app_df, user)
+
+            # Import subtasks
+            if has_subtasks_sheet:
+                subtask_sheet_name = self._find_subtasks_sheet(workbook)
+                print(f"DEBUG: Using subtasks sheet: {subtask_sheet_name}")
+                subtask_worksheet = workbook[subtask_sheet_name]
+            else:
+                # Fallback to first sheet if no specific subtask sheet found
+                subtask_worksheet = workbook.active
+                print(f"DEBUG: Using default active sheet: {subtask_worksheet.title}")
+
+            print(f"DEBUG: Processing subtask worksheet...")
+            subtask_df = self._worksheet_to_dataframe(subtask_worksheet, self.config.SUBTASK_FIELDS)
+            print(f"DEBUG: SubTask DataFrame shape: {subtask_df.shape}")
+            print(f"DEBUG: SubTask DataFrame columns: {list(subtask_df.columns)}")
+
+            if len(subtask_df) > 0:
+                total_subtask_rows = len(subtask_df)
+                print(f"DEBUG: Found {total_subtask_rows} subtask rows")
+                subtask_validation_errors = await self._validate_subtasks_data(db, subtask_df)
+                all_validation_errors.extend([{**error, 'sheet': '子追踪表'} for error in subtask_validation_errors])
+
+                if not validate_only and len(subtask_validation_errors) == 0:
+                    subtask_results = await self._import_subtasks_data(db, subtask_df, user)
+            else:
+                print(f"DEBUG: No subtask data found in worksheet")
+
+            total_rows = total_app_rows + total_subtask_rows
+
+            if all_validation_errors and not validate_only:
                 return {
                     'success': False,
-                    'errors': validation_errors,
-                    'total_rows': len(df),
+                    'errors': all_validation_errors,
+                    'total_rows': total_rows,
                     'processed_rows': 0
                 }
 
             if validate_only:
+                preview_data = []
+                if total_app_rows > 0:
+                    preview_data.extend([{**row, 'sheet': '总追踪表'} for row in app_df.head(3).to_dict('records')])
+                if total_subtask_rows > 0:
+                    preview_data.extend([{**row, 'sheet': '子追踪表'} for row in subtask_df.head(3).to_dict('records')])
+
                 return {
-                    'success': len(validation_errors) == 0,
-                    'errors': validation_errors,
-                    'total_rows': len(df),
-                    'preview_data': df.head(5).to_dict('records') if not validation_errors else []
+                    'success': len(all_validation_errors) == 0,
+                    'errors': all_validation_errors,
+                    'total_rows': total_rows,
+                    'preview_data': preview_data if len(all_validation_errors) == 0 else []
                 }
 
-            # Import data
-            results = await self._import_subtasks_data(db, df, user)
+            # Combine results for response
+            total_imported = app_results['imported'] + subtask_results['imported']
+            total_updated = app_results['updated'] + subtask_results['updated']
+            total_skipped = app_results['skipped'] + subtask_results['skipped']
 
             return {
                 'success': True,
-                'total_rows': len(df),
-                'processed_rows': results['imported'],
-                'updated_rows': results['updated'],
-                'skipped_rows': results['skipped'],
-                'errors': validation_errors
+                'total_rows': total_rows,
+                'processed_rows': total_imported,
+                'updated_rows': total_updated,
+                'skipped_rows': total_skipped,
+                'applications': {
+                    'total_rows': total_app_rows,
+                    'imported': app_results['imported'],
+                    'updated': app_results['updated'],
+                    'skipped': app_results['skipped']
+                },
+                'subtasks': {
+                    'total_rows': total_subtask_rows,
+                    'imported': subtask_results['imported'],
+                    'updated': subtask_results['updated'],
+                    'skipped': subtask_results['skipped']
+                },
+                'errors': all_validation_errors
             }
 
         except Exception as e:
+            print(f"DEBUG: Exception in import_subtasks_from_excel: {e}")
             return {
                 'success': False,
                 'error': str(e),
@@ -354,15 +459,19 @@ class ExcelService:
     def _find_applications_sheet(self, workbook) -> str:
         """Find applications worksheet."""
         for sheet_name in workbook.sheetnames:
-            if any(keyword in sheet_name.lower() for keyword in ['应用', 'application', 'app']):
+            if any(keyword in sheet_name.lower() for keyword in ['总追踪表', '应用', 'application', 'app']):
+                print(f"DEBUG: Found applications sheet: {sheet_name}")
                 return sheet_name
+        print(f"DEBUG: No applications sheet found, using first sheet: {workbook.sheetnames[0]}")
         return workbook.sheetnames[0]  # Default to first sheet
 
     def _find_subtasks_sheet(self, workbook) -> str:
         """Find subtasks worksheet."""
         for sheet_name in workbook.sheetnames:
-            if any(keyword in sheet_name.lower() for keyword in ['子任务', 'subtask', 'task']):
+            if any(keyword in sheet_name.lower() for keyword in ['子追踪表', '子任务', 'subtask', 'task']):
+                print(f"DEBUG: Found subtasks sheet: {sheet_name}")
                 return sheet_name
+        print(f"DEBUG: No subtasks sheet found, using first sheet: {workbook.sheetnames[0]}")
         return workbook.sheetnames[0]  # Default to first sheet
 
     def _worksheet_to_dataframe(self, worksheet, field_mapping: Dict[str, str]) -> pd.DataFrame:
@@ -381,16 +490,53 @@ class ExcelService:
                 break
             header_row += 1
 
-        print(f"DEBUG: Found headers at row {header_row}: {headers[:10]}")  # 调试信息
+        print(f"DEBUG: Found headers at row {header_row}: {headers}")  # 显示所有标题
+        print(f"DEBUG: Available field mappings: {list(field_mapping.keys())[:20]}")  # 显示前20个可用映射
 
         # Map headers to database fields
         column_mapping = {}
+        unmapped_headers = []
         for i, header in enumerate(headers):
             if header in field_mapping:
                 column_mapping[i] = field_mapping[header]
-                print(f"DEBUG: Mapped header '{header}' -> '{field_mapping[header]}'")  # 调试信息
+                print(f"DEBUG: ✓ Mapped header '{header}' -> '{field_mapping[header]}'")  # 调试信息
+            else:
+                unmapped_headers.append(header)
 
         print(f"DEBUG: Column mapping: {column_mapping}")  # 调试信息
+        print(f"DEBUG: ⚠️ Unmapped headers: {unmapped_headers}")  # 显示未映射的标题
+
+        # 如果没有映射到任何列，尝试智能推断
+        if not column_mapping:
+            print("DEBUG: 🔍 No direct column mapping found, trying intelligent matching...")
+
+            # 尝试模糊匹配常见的字段名
+            fuzzy_mapping = {
+                # SubTask相关的常见字段模式
+                'l2': 'application_l2_id',
+                '模块': 'module_name',
+                '目标': 'sub_target',
+                '状态': 'task_status',
+                '进度': 'progress_percentage',
+                'progress': 'progress_percentage',
+                'status': 'task_status',
+                'module': 'module_name',
+                'target': 'sub_target',
+                'blocked': 'is_blocked',
+                '阻塞': 'is_blocked',
+                'note': 'technical_notes',
+                '备注': 'technical_notes',
+                'assign': 'assigned_to',
+                '负责': 'assigned_to'
+            }
+
+            for i, header in enumerate(headers):
+                header_lower = header.lower().strip()
+                for pattern, field in fuzzy_mapping.items():
+                    if pattern in header_lower:
+                        column_mapping[i] = field
+                        print(f"DEBUG: 🎯 Fuzzy matched '{header}' -> '{field}' (pattern: '{pattern}')")
+                        break
 
         # Extract data rows
         row_count = 0
@@ -589,35 +735,63 @@ class ExcelService:
                         'value': row.get(field)
                     })
 
-            # Validate application L2 ID exists
+            # Validate and normalize application L2 ID
             app_l2_id = row.get('application_l2_id')
-            if app_l2_id and app_l2_id not in valid_l2_ids:
-                errors.append({
-                    'row': row_num,
-                    'column': '应用L2 ID',
-                    'message': f'应用L2 ID不存在: {app_l2_id}',
-                    'value': app_l2_id
-                })
+            if app_l2_id:
+                app_l2_id_str = str(app_l2_id).strip()
+                # 如果不以L2_开头，自动添加前缀
+                if not app_l2_id_str.startswith('L2_'):
+                    normalized_id = f'L2_{app_l2_id_str}'
+                    # 更新DataFrame中的值
+                    df.at[index, 'application_l2_id'] = normalized_id
+                    app_l2_id = normalized_id
 
-            # Validate sub_target
+                # 检查应用是否存在
+                if app_l2_id not in valid_l2_ids:
+                    errors.append({
+                        'row': row_num,
+                        'column': '应用L2 ID',
+                        'message': f'应用L2 ID不存在: {app_l2_id}',
+                        'value': app_l2_id
+                    })
+
+            # Validate and normalize sub_target (支持前端发送的值)
             sub_target = row.get('sub_target')
-            if sub_target and sub_target not in [t.value for t in TransformationTarget]:
-                errors.append({
-                    'row': row_num,
-                    'column': '子目标',
-                    'message': f'子目标必须是: {", ".join([t.value for t in TransformationTarget])}',
-                    'value': sub_target
-                })
+            if sub_target:
+                # 标准化子目标值
+                target_mapping = {
+                    'cloud_native': TransformationTarget.CLOUD_NATIVE.value,
+                    'AK': TransformationTarget.AK.value,
+                    'ak': TransformationTarget.AK.value,
+                    '云原生': TransformationTarget.CLOUD_NATIVE.value,
+                    'Cloud Native': TransformationTarget.CLOUD_NATIVE.value
+                }
 
-            # Validate task status
+                if sub_target in target_mapping:
+                    df.at[index, 'sub_target'] = target_mapping[sub_target]
+                elif sub_target not in [t.value for t in TransformationTarget]:
+                    # 如果不匹配，使用默认值
+                    df.at[index, 'sub_target'] = TransformationTarget.AK.value
+
+            # Validate and normalize task status (支持前端发送的值)
             status = row.get('task_status')
-            if status and status not in [s.value for s in SubTaskStatus]:
-                errors.append({
-                    'row': row_num,
-                    'column': '任务状态',
-                    'message': f'任务状态必须是: {", ".join([s.value for s in SubTaskStatus])}',
-                    'value': status
-                })
+            if status:
+                # 标准化状态值
+                status_mapping = {
+                    'not_started': '待启动',
+                    'in_progress': '研发进行中',
+                    'testing': '测试中',
+                    'deployment_ready': '待上线',
+                    'completed': '已完成',
+                    'blocked': '阻塞中',
+                    '正常': '研发进行中'  # 前端发送的\"正常\"状态
+                }
+
+                if status in status_mapping:
+                    df.at[index, 'task_status'] = status_mapping[status]
+                elif status not in [s.value for s in SubTaskStatus]:
+                    # 如果不匹配，使用默认值
+                    df.at[index, 'task_status'] = '待启动'
 
             # Validate progress percentage
             progress = row.get('progress_percentage')
@@ -736,7 +910,7 @@ class ExcelService:
         app_result = await db.execute(select(Application.id, Application.l2_id))
         app_id_map = {l2_id: app_id for app_id, l2_id in app_result.all()}
 
-        for _, row in df.iterrows():
+        for index, row in df.iterrows():
             try:
                 app_l2_id = row.get('application_l2_id')
                 application_id = app_id_map.get(app_l2_id)
@@ -745,7 +919,7 @@ class ExcelService:
                     skipped += 1
                     continue
 
-                # Check if subtask exists
+                # Check if subtask exists (based on application_id, module_name, sub_target)
                 existing = await db.execute(
                     select(SubTask).where(
                         and_(
@@ -758,25 +932,73 @@ class ExcelService:
                 existing_subtask = existing.scalar_one_or_none()
 
                 if existing_subtask:
-                    # Update existing subtask
+                    # Update existing subtask (只更新SubTask模型支持的字段)
+                    subtask_model_fields = {
+                        'module_name', 'sub_target', 'version_name', 'task_status',
+                        'progress_percentage', 'is_blocked', 'block_reason',
+                        'planned_requirement_date', 'planned_release_date', 'planned_tech_online_date', 'planned_biz_online_date',
+                        'actual_requirement_date', 'actual_release_date', 'actual_tech_online_date', 'actual_biz_online_date',
+                        'requirements', 'technical_notes', 'test_notes', 'deployment_notes',
+                        'priority', 'estimated_hours', 'actual_hours', 'assigned_to', 'reviewer'
+                    }
+
                     for field, value in row.items():
-                        if field != 'application_l2_id' and value is not None and hasattr(existing_subtask, field):
+                        if field in subtask_model_fields and value is not None and value != '' and hasattr(existing_subtask, field):
                             setattr(existing_subtask, field, value)
 
+                    # 更新修改者信息
+                    existing_subtask.updated_by = user.id
                     updated += 1
                 else:
-                    # Create new subtask
-                    subtask_data = {k: v for k, v in row.items() if k != 'application_l2_id' and v is not None}
+                    # Create new subtask (只包含SubTask模型支持的字段)
+                    subtask_data = {}
+                    subtask_model_fields = {
+                        'module_name', 'sub_target', 'version_name', 'task_status',
+                        'progress_percentage', 'is_blocked', 'block_reason',
+                        'planned_requirement_date', 'planned_release_date', 'planned_tech_online_date', 'planned_biz_online_date',
+                        'actual_requirement_date', 'actual_release_date', 'actual_tech_online_date', 'actual_biz_online_date',
+                        'requirements', 'technical_notes', 'test_notes', 'deployment_notes',
+                        'priority', 'estimated_hours', 'actual_hours', 'assigned_to', 'reviewer'
+                    }
+
+                    for k, v in row.items():
+                        if k in subtask_model_fields and v is not None and v != '':
+                            subtask_data[k] = v
+
+                    # 添加必需的默认值
                     subtask_data['application_id'] = application_id
+                    if 'created_by' not in subtask_data:
+                        subtask_data['created_by'] = user.id
+                    if 'updated_by' not in subtask_data:
+                        subtask_data['updated_by'] = user.id
+
+                    # 确保必需字段有默认值
+                    if 'module_name' not in subtask_data or not subtask_data['module_name']:
+                        subtask_data['module_name'] = '默认模块'
+                    if 'sub_target' not in subtask_data or not subtask_data['sub_target']:
+                        subtask_data['sub_target'] = 'AK'
+                    if 'task_status' not in subtask_data or not subtask_data['task_status']:
+                        subtask_data['task_status'] = '待启动'
+                    if 'progress_percentage' not in subtask_data:
+                        subtask_data['progress_percentage'] = 0
+                    if 'is_blocked' not in subtask_data:
+                        subtask_data['is_blocked'] = False
+                    if 'priority' not in subtask_data:
+                        subtask_data['priority'] = 1
+
                     new_subtask = SubTask(**subtask_data)
                     db.add(new_subtask)
                     imported += 1
 
-            except Exception as e:
-                print(f"Error importing subtask row: {e}")
-                skipped += 1
+                # 每处理一行就提交一次，避免批量rollback
+                await db.commit()
 
-        await db.commit()
+            except Exception as e:
+                print(f"Error importing subtask row {index + 2}: {e}")
+                # 遇到错误时rollback当前事务，继续处理下一行
+                await db.rollback()
+                skipped += 1
+                continue
 
         return {
             'imported': imported,
