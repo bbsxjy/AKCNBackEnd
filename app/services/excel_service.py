@@ -64,25 +64,118 @@ class ExcelMappingConfig:
         'service_tier': 'service_tier',
         'priority': 'priority',
         'delay_status': 'delay_status',
-        # 保留中文字段名兼容性
+        # 保留中文字段名兼容性（扩展更多变体）
         'L2 ID': 'l2_id',
+        'L2ID': 'l2_id',
+        'L2-ID': 'l2_id',
+        'L2_ID': 'l2_id',
+        'L2编号': 'l2_id',
+        '应用编号': 'l2_id',
+        '系统编号': 'l2_id',
+        '序号': 'l2_id',
+
         '应用名称': 'app_name',
+        '应用名': 'app_name',
+        '系统名称': 'app_name',
+        '系统名': 'app_name',
+        'L2应用名': 'app_name',
+        'L2应用名称': 'app_name',
+        '名称': 'app_name',
+
         '监管年': 'supervision_year',
+        '监管年度': 'supervision_year',
+        '监管年份': 'supervision_year',
+        '年度': 'supervision_year',
+        '指标年度': 'supervision_year',
+        '指标标签': 'supervision_year',
+
         '转型目标': 'transformation_target',
+        '改造目标': 'transformation_target',
+        '目标': 'transformation_target',
+        '改造类型': 'transformation_target',
+        'AK/云原生': 'transformation_target',
+        'AK/Cloud': 'transformation_target',
+        '改造方向': 'transformation_target',
+
         '当前阶段': 'current_stage',
+        '当前状态': 'current_stage',
+        '阶段': 'current_stage',
+        '进展阶段': 'current_stage',
+        '开发阶段': 'current_stage',
+        '改造阶段': 'current_stage',
+
         '整体状态': 'overall_status',
+        '状态': 'overall_status',
+        '总体状态': 'overall_status',
+        '完成状态': 'overall_status',
+        '改造状态': 'overall_status',
+        '整体进展': 'overall_status',
+
         '负责团队': 'responsible_team',
+        '团队': 'responsible_team',
+        '开发团队': 'responsible_team',
+        '改造团队': 'responsible_team',
+        '负责部门': 'responsible_team',
+        '责任团队': 'responsible_team',
+        '所属团队': 'responsible_team',
+
         '负责人': 'responsible_person',
+        '责任人': 'responsible_person',
+        '开发负责人': 'responsible_person',
+        '项目负责人': 'responsible_person',
+        '团队负责人': 'responsible_person',
+        '联系人': 'responsible_person',
+
         '进度百分比': 'progress_percentage',
+        '进度': 'progress_percentage',
+        '完成进度': 'progress_percentage',
+        '完成百分比': 'progress_percentage',
+        '进度(%)': 'progress_percentage',
+        '进度%': 'progress_percentage',
+        '整体进度': 'progress_percentage',
+
         '计划需求日期': 'planned_requirement_date',
+        '计划需求': 'planned_requirement_date',
+        '需求计划': 'planned_requirement_date',
+
         '计划发布日期': 'planned_release_date',
+        '计划发布': 'planned_release_date',
+        '发布计划': 'planned_release_date',
+
         '计划技术上线日期': 'planned_tech_online_date',
+        '计划技术上线': 'planned_tech_online_date',
+        '技术上线计划': 'planned_tech_online_date',
+
         '计划业务上线日期': 'planned_biz_online_date',
+        '计划业务上线': 'planned_biz_online_date',
+        '业务上线计划': 'planned_biz_online_date',
+        '计划上线': 'planned_biz_online_date',
+        '计划完成日期': 'planned_biz_online_date',
+
         '实际需求日期': 'actual_requirement_date',
+        '实际需求': 'actual_requirement_date',
+        '需求实际': 'actual_requirement_date',
+
         '实际发布日期': 'actual_release_date',
+        '实际发布': 'actual_release_date',
+        '发布实际': 'actual_release_date',
+
         '实际技术上线日期': 'actual_tech_online_date',
+        '实际技术上线': 'actual_tech_online_date',
+        '技术上线实际': 'actual_tech_online_date',
+
         '实际业务上线日期': 'actual_biz_online_date',
-        '备注': 'notes'
+        '实际业务上线': 'actual_biz_online_date',
+        '业务上线实际': 'actual_biz_online_date',
+        '实际上线': 'actual_biz_online_date',
+        '实际完成日期': 'actual_biz_online_date',
+
+        '备注': 'notes',
+        '说明': 'notes',
+        '描述': 'notes',
+        '注释': 'notes',
+        '备注说明': 'notes',
+        '其他': 'notes'
     }
 
     # SubTask field mappings (支持前端发送的英文字段名)
@@ -487,14 +580,45 @@ class ExcelService:
         data = []
         headers = []
 
-        # Find header row
+        # Keywords that indicate actual column headers (not instruction text)
+        header_keywords = [
+            'L2', 'ID', '应用', '名称', '模块', '状态', '进度', '负责', '日期', '备注',
+            'application', 'module', 'status', 'progress', 'date', 'team', 'person',
+            '版本', '目标', '阶段', '团队', '百分比', '计划', '实际', 'name', 'target'
+        ]
+
+        # Find header row by checking for actual column names, not instruction text
         header_row = 1
-        for row in worksheet.iter_rows(min_row=1, max_row=10):
-            row_values = [cell.value for cell in row if cell.value is not None]
-            if len(row_values) >= 3:  # Assume header row has at least 3 columns
-                headers = [str(cell.value).strip() if cell.value else '' for cell in row]
-                break
-            header_row += 1
+        for row_num, row in enumerate(worksheet.iter_rows(min_row=1, max_row=20), start=1):
+            row_values = [str(cell.value).strip() if cell.value else '' for cell in row]
+            non_empty_values = [v for v in row_values if v]
+
+            # Skip rows that look like instructions (very long text in first cell)
+            if non_empty_values and len(non_empty_values[0]) > 100:
+                print(f"DEBUG: Row {row_num} looks like instructions, skipping...")
+                continue
+
+            # Check if this row contains header keywords
+            if len(non_empty_values) >= 3:
+                row_text = ' '.join(non_empty_values).lower()
+                matches = sum(1 for keyword in header_keywords if keyword.lower() in row_text)
+
+                if matches >= 2:  # At least 2 header keywords found
+                    headers = [str(cell.value).strip() if cell.value else '' for cell in row]
+                    header_row = row_num
+                    print(f"DEBUG: Found likely header row at row {header_row} with {matches} keyword matches")
+                    break
+        else:
+            # Fallback: if no headers found with keywords, look for row with many non-empty cells
+            for row_num, row in enumerate(worksheet.iter_rows(min_row=1, max_row=20), start=1):
+                row_values = [cell.value for cell in row]
+                non_empty_count = sum(1 for v in row_values if v is not None and str(v).strip())
+
+                if non_empty_count >= 5 and all(len(str(v)) < 50 for v in row_values if v):
+                    headers = [str(cell.value).strip() if cell.value else '' for cell in row]
+                    header_row = row_num
+                    print(f"DEBUG: Using fallback header detection at row {header_row}")
+                    break
 
         print(f"DEBUG: Found headers at row {header_row}: {headers}")  # 显示所有标题
         print(f"DEBUG: Available field mappings: {list(field_mapping.keys())[:20]}")  # 显示前20个可用映射
@@ -516,24 +640,53 @@ class ExcelService:
         if not column_mapping:
             print("DEBUG: 🔍 No direct column mapping found, trying intelligent matching...")
 
-            # 尝试模糊匹配常见的字段名
+            # 尝试模糊匹配常见的字段名（支持Applications和SubTasks）
             fuzzy_mapping = {
-                # SubTask相关的常见字段模式
-                'l2': 'application_l2_id',
-                '模块': 'module_name',
-                '目标': 'sub_target',
-                '状态': 'task_status',
+                # Application相关的字段模式
+                'l2': 'l2_id',
+                'L2': 'l2_id',
+                '序号': 'l2_id',
+                '编号': 'l2_id',
+                '应用': 'app_name',
+                '系统': 'app_name',
+                '名称': 'app_name',
+                '监管': 'supervision_year',
+                '年度': 'supervision_year',
+                '指标': 'supervision_year',
+                '改造': 'transformation_target',
+                '目标': 'transformation_target',
+                'AK': 'transformation_target',
+                '云原生': 'transformation_target',
+                '阶段': 'current_stage',
+                '当前': 'current_stage',
+                '状态': 'overall_status',
+                '整体': 'overall_status',
+                '总体': 'overall_status',
+                '团队': 'responsible_team',
+                '部门': 'responsible_team',
+                '负责人': 'responsible_person',
+                '责任人': 'responsible_person',
                 '进度': 'progress_percentage',
+                '百分比': 'progress_percentage',
                 'progress': 'progress_percentage',
-                'status': 'task_status',
+                'status': 'overall_status',
+                'team': 'responsible_team',
+                'person': 'responsible_person',
+                '计划': 'planned_biz_online_date',
+                '实际': 'actual_biz_online_date',
+                '上线': 'planned_biz_online_date',
+                '完成': 'planned_biz_online_date',
+                '备注': 'notes',
+                '说明': 'notes',
+                'note': 'notes',
+
+                # SubTask相关的字段模式
+                '模块': 'module_name',
                 'module': 'module_name',
-                'target': 'sub_target',
                 'blocked': 'is_blocked',
                 '阻塞': 'is_blocked',
-                'note': 'technical_notes',
-                '备注': 'technical_notes',
                 'assign': 'assigned_to',
-                '负责': 'assigned_to'
+                '分配': 'assigned_to'
             }
 
             for i, header in enumerate(headers):
@@ -544,32 +697,71 @@ class ExcelService:
                         print(f"DEBUG: 🎯 Fuzzy matched '{header}' -> '{field}' (pattern: '{pattern}')")
                         break
 
-        # Extract data rows
+        # Extract data rows with chunked processing for large files
+        data = []
         row_count = 0
-        for row in worksheet.iter_rows(min_row=header_row + 1):
-            row_data = {}
-            has_data = False
+        chunk_size = 1000  # Process in chunks to avoid memory issues
+        total_rows = worksheet.max_row - header_row
 
-            for i, cell in enumerate(row):
-                if i in column_mapping:
-                    field_name = column_mapping[i]
-                    value = cell.value
+        print(f"DEBUG: Processing {total_rows} rows from Excel file...")
 
-                    # Convert data types
-                    if value is not None:
-                        value = self._convert_cell_value(value, field_name)
-                        has_data = True
+        # Process rows in chunks for better performance
+        for chunk_start in range(header_row + 1, worksheet.max_row + 1, chunk_size):
+            chunk_end = min(chunk_start + chunk_size - 1, worksheet.max_row)
+            chunk_data = []
 
-                    row_data[field_name] = value
+            for row in worksheet.iter_rows(min_row=chunk_start, max_row=chunk_end):
+                row_data = {}
+                has_data = False
 
-            if has_data:
-                data.append(row_data)
-                row_count += 1
-                if row_count <= 2:  # 只打印前2行的调试信息
-                    print(f"DEBUG: Row {row_count} data: {row_data}")
+                # Skip completely empty rows
+                if all(cell.value is None for cell in row):
+                    continue
+
+                for i, cell in enumerate(row):
+                    if i in column_mapping:
+                        field_name = column_mapping[i]
+                        value = cell.value
+
+                        # Convert data types
+                        if value is not None:
+                            value = self._convert_cell_value(value, field_name)
+                            has_data = True
+
+                        row_data[field_name] = value
+
+                if has_data:
+                    chunk_data.append(row_data)
+                    row_count += 1
+
+                    # Only print first few rows for debugging
+                    if row_count <= 3:
+                        print(f"DEBUG: Row {chunk_start + row_count - 1} data: {row_data}")
+
+            # Add chunk data to main data list
+            data.extend(chunk_data)
+
+            # Progress indicator for large files
+            if total_rows > 5000 and chunk_start % 5000 == 1:
+                progress = ((chunk_start - header_row) / total_rows) * 100
+                print(f"DEBUG: Processing progress: {progress:.1f}%")
 
         print(f"DEBUG: Total rows extracted: {len(data)}")  # 调试信息
-        return pd.DataFrame(data)
+
+        # Convert to DataFrame and optimize memory usage
+        if data:
+            df = pd.DataFrame(data)
+            # Optimize memory for large dataframes
+            for col in df.columns:
+                col_type = df[col].dtype
+                if col_type != 'object':
+                    try:
+                        df[col] = pd.to_numeric(df[col], downcast='integer')
+                    except:
+                        pass
+            return df
+        else:
+            return pd.DataFrame()
 
     def _convert_cell_value(self, value: Any, field_name: str) -> Any:
         """Convert cell value to appropriate Python type."""
