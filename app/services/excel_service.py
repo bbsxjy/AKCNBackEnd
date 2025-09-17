@@ -226,6 +226,7 @@ class ExcelMappingConfig:
         '版本名称': 'version_name',         # 完整版本
         '改造状态': 'task_status',          # Excel中的改造状态
         '任务状态': 'task_status',          # 标准任务状态
+        '子任务完成': 'task_status',        # 子任务状态的另一种表述
         '进度百分比': 'progress_percentage',
         '是否阻塞': 'is_blocked',
         '阻塞原因': 'block_reason',
@@ -237,9 +238,25 @@ class ExcelMappingConfig:
         '实际发布日期': 'actual_release_date',
         '实际技术上线日期': 'actual_tech_online_date',
         '实际业务上线日期': 'actual_biz_online_date',
+        # 带【】标记的日期字段
+        '【计划】\n需求完成时间': 'planned_requirement_date',
+        '【实际】\n需求到达时间': 'actual_requirement_date',
+        '【计划】\n发版时间': 'planned_release_date',
+        '【实际】\n发版时间': 'actual_release_date',
+        '【计划】\n技术上线时间': 'planned_tech_online_date',
+        '【实际】\n技术上线时间': 'actual_tech_online_date',
+        '【计划】\n业务上线时间': 'planned_biz_online_date',
+        '【实际】\n业务上线时间': 'actual_biz_online_date',
+        # 其他字段
+        '开发负责人': 'assigned_to',
+        '开发团队': 'assigned_to',
+        '运维负责人': 'reviewer',
+        '运维团队': 'reviewer',
         '工作量估算': 'estimated_hours',
         '负责人': 'assigned_to',
-        '备注': 'technical_notes'
+        '备注': 'technical_notes',
+        '子表备注': 'technical_notes',
+        '主表同步备注': 'technical_notes'
     }
 
     # Required fields (调整为更宽松的验证，适配前端数据)
@@ -760,31 +777,60 @@ class ExcelService:
                         print(f"DEBUG: 🎯 Fuzzy matched '{header}' -> '{field}' (pattern: '{pattern}')")
                         break
 
-        # Extract data rows with chunked processing for large files
+        # Extract data rows with smart termination and chunked processing
         data = []
         row_count = 0
-        chunk_size = 1000  # Process in chunks to avoid memory issues
-        total_rows = worksheet.max_row - header_row
+        empty_row_count = 0
+        chunk_size = 500  # Smaller chunks for better performance
+        max_rows_to_process = 50000  # Reasonable limit to prevent timeout
+        max_consecutive_empty = 20  # Stop after 20 consecutive empty rows
 
-        print(f"DEBUG: Processing {total_rows} rows from Excel file...")
+        # Get actual data range (not worksheet.max_row which can be misleading)
+        actual_max_row = min(worksheet.max_row, header_row + max_rows_to_process)
+
+        # For very large files, try to find the actual end of data
+        if worksheet.max_row > 10000:
+            print(f"DEBUG: Large file detected ({worksheet.max_row} rows), finding actual data range...")
+            # Sample check: if rows 1000-1100 are all empty, likely end of data
+            sample_start = min(1000, worksheet.max_row)
+            sample_empty = 0
+            for row in worksheet.iter_rows(min_row=sample_start, max_row=sample_start + 100):
+                if all(cell.value is None for cell in row):
+                    sample_empty += 1
+
+            if sample_empty > 90:  # If >90% of sample is empty, data likely ends before
+                actual_max_row = sample_start
+                print(f"DEBUG: Detected probable end of data around row {actual_max_row}")
+
+        total_rows = actual_max_row - header_row
+        print(f"DEBUG: Processing up to {total_rows} rows from Excel file...")
 
         # Process rows in chunks for better performance
-        for chunk_start in range(header_row + 1, worksheet.max_row + 1, chunk_size):
-            chunk_end = min(chunk_start + chunk_size - 1, worksheet.max_row)
+        for chunk_start in range(header_row + 1, actual_max_row + 1, chunk_size):
+            chunk_end = min(chunk_start + chunk_size - 1, actual_max_row)
             chunk_data = []
+            chunk_empty_count = 0
 
-            for row in worksheet.iter_rows(min_row=chunk_start, max_row=chunk_end):
+            for row in worksheet.iter_rows(min_row=chunk_start, max_row=chunk_end, values_only=True):
+                # Check if row is completely empty
+                if all(v is None for v in row):
+                    empty_row_count += 1
+                    chunk_empty_count += 1
+
+                    # Stop if too many consecutive empty rows
+                    if empty_row_count >= max_consecutive_empty:
+                        print(f"DEBUG: Found {empty_row_count} consecutive empty rows, assuming end of data at row {chunk_start + chunk_empty_count}")
+                        break
+                    continue
+                else:
+                    empty_row_count = 0  # Reset counter when we find data
+
                 row_data = {}
                 has_data = False
 
-                # Skip completely empty rows
-                if all(cell.value is None for cell in row):
-                    continue
-
-                for i, cell in enumerate(row):
+                for i, value in enumerate(row):
                     if i in column_mapping:
                         field_name = column_mapping[i]
-                        value = cell.value
 
                         # Convert data types
                         if value is not None:
@@ -804,10 +850,18 @@ class ExcelService:
             # Add chunk data to main data list
             data.extend(chunk_data)
 
+            # Stop if we found the end of data
+            if empty_row_count >= max_consecutive_empty:
+                break
+
+            # Stop if we've processed enough rows
+            if row_count >= max_rows_to_process:
+                print(f"DEBUG: Reached maximum row limit ({max_rows_to_process}), stopping processing")
+                break
+
             # Progress indicator for large files
-            if total_rows > 5000 and chunk_start % 5000 == 1:
-                progress = ((chunk_start - header_row) / total_rows) * 100
-                print(f"DEBUG: Processing progress: {progress:.1f}%")
+            if row_count > 0 and row_count % 1000 == 0:
+                print(f"DEBUG: Processed {row_count} rows...")
 
         print(f"DEBUG: Total rows extracted: {len(data)}")  # 调试信息
 
