@@ -1220,8 +1220,8 @@ class ExcelService:
                     if 'responsible_team' not in app_data or not app_data['responsible_team']:
                         app_data['responsible_team'] = '待分配'
                     if 'app_name' not in app_data or not app_data['app_name']:
-                        # Don't add prefix - use L2 ID as is for default name
-                        app_data['app_name'] = str(app_data["l2_id"])
+                        # Keep app_name empty if not provided - don't use l2_id
+                        app_data['app_name'] = '未命名应用'
                     if 'supervision_year' not in app_data or not app_data['supervision_year']:
                         app_data['supervision_year'] = 2024
                     if 'transformation_target' not in app_data or not app_data['transformation_target']:
@@ -1284,7 +1284,7 @@ class ExcelService:
                     # 创建placeholder应用
                     new_app_data = {
                         'l2_id': app_l2_id,
-                        'app_name': str(app_l2_id),  # Use L2 ID as default name without prefix
+                        'app_name': '未命名应用',  # Default name when creating placeholder
                         'overall_status': '待启动',
                         'transformation_target': 'AK',
                         'current_stage': '待启动',
