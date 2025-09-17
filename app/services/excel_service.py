@@ -946,15 +946,13 @@ class ExcelService:
                         'value': row.get(field)
                     })
 
-            # Validate and normalize L2 ID format
+            # Validate L2 ID format (but don't add prefix)
             l2_id = row.get('l2_id')
             if l2_id:
                 l2_id_str = str(l2_id).strip()
-                # 如果不以L2_开头，自动添加前缀
-                if not l2_id_str.startswith('L2_'):
-                    normalized_id = f'L2_{l2_id_str}'
-                    # 更新DataFrame中的值
-                    df.at[index, 'l2_id'] = normalized_id
+                # Keep the original L2 ID without adding prefix
+                # User explicitly requested: "对于导入的数据，请不要在原数据前加前缀"
+                df.at[index, 'l2_id'] = l2_id_str
 
             # Validate supervision year
             year = row.get('supervision_year')
@@ -1075,13 +1073,10 @@ class ExcelService:
                 app_l2_id_str = str(app_l2_id).strip()
                 print(f"DEBUG: L2 ID after string conversion: '{app_l2_id_str}'")
 
-                # 如果不以L2_开头，自动添加前缀
-                if not app_l2_id_str.startswith('L2_'):
-                    normalized_id = f'L2_{app_l2_id_str}'
-                    print(f"DEBUG: Normalized L2 ID: '{app_l2_id_str}' -> '{normalized_id}'")
-                    # 更新DataFrame中的值
-                    df.at[index, 'application_l2_id'] = normalized_id
-                    app_l2_id = normalized_id
+                # Keep the original L2 ID without adding prefix
+                # User explicitly requested: "对于导入的数据，请不要在原数据前加前缀"
+                df.at[index, 'application_l2_id'] = app_l2_id_str
+                app_l2_id = app_l2_id_str
 
                 # 检查应用是否存在（如果不存在，import时会自动创建）
                 if app_l2_id not in valid_l2_ids:
@@ -1225,7 +1220,8 @@ class ExcelService:
                     if 'responsible_team' not in app_data or not app_data['responsible_team']:
                         app_data['responsible_team'] = '待分配'
                     if 'app_name' not in app_data or not app_data['app_name']:
-                        app_data['app_name'] = f'应用_{app_data["l2_id"]}'
+                        # Don't add prefix - use L2 ID as is for default name
+                        app_data['app_name'] = str(app_data["l2_id"])
                     if 'supervision_year' not in app_data or not app_data['supervision_year']:
                         app_data['supervision_year'] = 2024
                     if 'transformation_target' not in app_data or not app_data['transformation_target']:
@@ -1288,7 +1284,7 @@ class ExcelService:
                     # 创建placeholder应用
                     new_app_data = {
                         'l2_id': app_l2_id,
-                        'app_name': f'应用 {app_l2_id}',  # 默认应用名称
+                        'app_name': str(app_l2_id),  # Use L2 ID as default name without prefix
                         'overall_status': '待启动',
                         'transformation_target': 'AK',
                         'current_stage': '待启动',
