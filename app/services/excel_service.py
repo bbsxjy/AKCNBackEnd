@@ -560,6 +560,14 @@ class ExcelService:
         for sheet_name in workbook.sheetnames:
             if any(keyword in sheet_name.lower() for keyword in ['总追踪表', '应用', 'application', 'app']):
                 print(f"DEBUG: Found applications sheet: {sheet_name}")
+
+                # Preview first few rows to help identify structure
+                worksheet = workbook[sheet_name]
+                print(f"DEBUG: Sheet preview (first 10 rows, first 5 columns):")
+                for row_num, row in enumerate(worksheet.iter_rows(min_row=1, max_row=10, max_col=5), start=1):
+                    row_preview = [str(cell.value)[:30] if cell.value else 'None' for cell in row]
+                    print(f"  Row {row_num}: {row_preview}")
+
                 return sheet_name
         print(f"DEBUG: No applications sheet found, using first sheet: {workbook.sheetnames[0]}")
         return workbook.sheetnames[0]  # Default to first sheet
@@ -580,16 +588,25 @@ class ExcelService:
         data = []
         headers = []
 
-        # Keywords that indicate actual column headers (not instruction text)
+        # Keywords that indicate actual column headers (not instruction/statistics text)
         header_keywords = [
             'L2', 'ID', '应用', '名称', '模块', '状态', '进度', '负责', '日期', '备注',
             'application', 'module', 'status', 'progress', 'date', 'team', 'person',
-            '版本', '目标', '阶段', '团队', '百分比', '计划', '实际', 'name', 'target'
+            '版本', '目标', '阶段', '团队', '百分比', 'name', 'target', '序号',
+            '系统', '监管', '改造', '开发', '上线', '发布', '需求'
         ]
 
-        # Find header row by checking for actual column names, not instruction text
+        # Keywords that indicate statistics/summary rows (should be skipped)
+        skip_keywords = [
+            '本月计划', '分项统计', '已完成', '工作进度', '统计', '汇总', '合计',
+            '总计', '小计', '说明', '使用说明', '指标标签解释', '表格使用说明'
+        ]
+
+        # Find header row by checking for actual column names, not instruction/statistics text
         header_row = 1
-        for row_num, row in enumerate(worksheet.iter_rows(min_row=1, max_row=20), start=1):
+        best_match = {'row': 1, 'score': 0, 'headers': []}
+
+        for row_num, row in enumerate(worksheet.iter_rows(min_row=1, max_row=30), start=1):
             row_values = [str(cell.value).strip() if cell.value else '' for cell in row]
             non_empty_values = [v for v in row_values if v]
 
@@ -598,27 +615,73 @@ class ExcelService:
                 print(f"DEBUG: Row {row_num} looks like instructions, skipping...")
                 continue
 
+            # Skip rows that contain statistics/summary keywords
+            if non_empty_values:
+                row_text = ' '.join(non_empty_values[:5]).lower()  # Check first 5 cells
+                if any(skip_word in row_text for skip_word in skip_keywords):
+                    print(f"DEBUG: Row {row_num} looks like statistics/summary, skipping...")
+                    continue
+
             # Check if this row contains header keywords
-            if len(non_empty_values) >= 3:
+            if len(non_empty_values) >= 5:  # Real headers should have multiple columns
                 row_text = ' '.join(non_empty_values).lower()
                 matches = sum(1 for keyword in header_keywords if keyword.lower() in row_text)
 
-                if matches >= 2:  # At least 2 header keywords found
-                    headers = [str(cell.value).strip() if cell.value else '' for cell in row]
-                    header_row = row_num
-                    print(f"DEBUG: Found likely header row at row {header_row} with {matches} keyword matches")
-                    break
-        else:
-            # Fallback: if no headers found with keywords, look for row with many non-empty cells
-            for row_num, row in enumerate(worksheet.iter_rows(min_row=1, max_row=20), start=1):
-                row_values = [cell.value for cell in row]
-                non_empty_count = sum(1 for v in row_values if v is not None and str(v).strip())
+                # Give extra weight to specific critical keywords
+                if 'l2' in row_text and ('id' in row_text or '编号' in row_text):
+                    matches += 3  # L2 ID is a critical field
+                if '应用' in row_text or 'application' in row_text.lower():
+                    matches += 2
+                if '负责' in row_text or '团队' in row_text:
+                    matches += 2
 
-                if non_empty_count >= 5 and all(len(str(v)) < 50 for v in row_values if v):
-                    headers = [str(cell.value).strip() if cell.value else '' for cell in row]
-                    header_row = row_num
-                    print(f"DEBUG: Using fallback header detection at row {header_row}")
-                    break
+                # Calculate score based on matches and non-empty cells
+                score = matches * 10 + len(non_empty_values)
+
+                if score > best_match['score']:
+                    best_match = {
+                        'row': row_num,
+                        'score': score,
+                        'headers': [str(cell.value).strip() if cell.value else '' for cell in row]
+                    }
+                    print(f"DEBUG: Row {row_num} - score: {score}, matches: {matches}, non-empty: {len(non_empty_values)}")
+
+        # Use the best matching row as headers
+        if best_match['score'] > 20:  # Minimum score threshold
+            header_row = best_match['row']
+            headers = best_match['headers']
+            print(f"DEBUG: Selected header row {header_row} with score {best_match['score']}")
+        else:
+            print(f"DEBUG: Score too low ({best_match['score']}), trying fallback detection...")
+
+            # Fallback: if no headers found with keywords, look for row with many non-empty cells
+            for row_num, row in enumerate(worksheet.iter_rows(min_row=1, max_row=30), start=1):
+                row_values = [cell.value for cell in row]
+                non_empty_values = [str(v).strip() for v in row_values if v is not None and str(v).strip()]
+
+                # Skip statistics rows
+                if non_empty_values:
+                    first_cell_text = non_empty_values[0].lower()
+                    if any(skip_word in first_cell_text for skip_word in skip_keywords):
+                        continue
+
+                # Look for rows with many short, distinct values (typical of headers)
+                if len(non_empty_values) >= 8:
+                    # Check if values are reasonably short and diverse
+                    avg_length = sum(len(v) for v in non_empty_values) / len(non_empty_values)
+                    unique_ratio = len(set(non_empty_values)) / len(non_empty_values)
+
+                    if avg_length < 30 and unique_ratio > 0.7:  # Short and diverse = likely headers
+                        headers = [str(cell.value).strip() if cell.value else '' for cell in row]
+                        header_row = row_num
+                        print(f"DEBUG: Using fallback header detection at row {header_row} (avg_len: {avg_length:.1f}, unique: {unique_ratio:.2f})")
+                        break
+
+            # If still no headers found, use the best match we had
+            if not headers and best_match['headers']:
+                header_row = best_match['row']
+                headers = best_match['headers']
+                print(f"DEBUG: Using best available match at row {header_row}")
 
         print(f"DEBUG: Found headers at row {header_row}: {headers}")  # 显示所有标题
         print(f"DEBUG: Available field mappings: {list(field_mapping.keys())[:20]}")  # 显示前20个可用映射
