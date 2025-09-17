@@ -121,12 +121,18 @@ class ExcelMappingConfig:
         'notes': 'technical_notes',
         'remarks': 'technical_notes',      # 别名
         'description': 'technical_notes',  # 别名
-        # 保留中文字段名兼容性
-        '应用L2 ID': 'application_l2_id',
+        # 保留中文字段名兼容性（完整支持所有中文列名）
+        'L2ID': 'application_l2_id',        # Excel中的简化版本
+        'L2 ID': 'application_l2_id',       # Excel中的空格版本
+        '应用L2 ID': 'application_l2_id',   # 完整版本
+        'L2应用名': 'application_name',     # 应用名称字段
+        '应用名称': 'application_name',     # 应用名称完整版本
         '模块名称': 'module_name',
         '子目标': 'sub_target',
-        '版本名称': 'version_name',
-        '任务状态': 'task_status',
+        '版本名': 'version_name',           # 简化版本
+        '版本名称': 'version_name',         # 完整版本
+        '改造状态': 'task_status',          # Excel中的改造状态
+        '任务状态': 'task_status',          # 标准任务状态
         '进度百分比': 'progress_percentage',
         '是否阻塞': 'is_blocked',
         '阻塞原因': 'block_reason',
@@ -721,39 +727,63 @@ class ExcelService:
         # Get valid application L2 IDs
         app_result = await db.execute(select(Application.l2_id))
         valid_l2_ids = set([row[0] for row in app_result.all()])
+        print(f"DEBUG: Found {len(valid_l2_ids)} valid L2 IDs in database")
+        if valid_l2_ids:
+            print(f"DEBUG: Sample L2 IDs: {sorted(list(valid_l2_ids))[:10]}")
+        else:
+            print(f"DEBUG: ⚠️ No applications found in database! This will cause all validations to fail.")
+
+        # Also check all L2 IDs in the DataFrame to see what we're trying to match
+        df_l2_ids = df['application_l2_id'].dropna().unique() if 'application_l2_id' in df.columns else []
+        print(f"DEBUG: L2 IDs in Excel data: {list(df_l2_ids)[:10]}")
 
         for index, row in df.iterrows():
             row_num = index + 2  # Excel row number
 
+            # Debug: show first few rows of data
+            if index < 3:
+                print(f"DEBUG: Row {row_num} data: {dict(row)}")
+
             # Check required fields
             for field in self.config.SUBTASK_REQUIRED:
-                if pd.isna(row.get(field)) or row.get(field) == '' or row.get(field) is None:
+                field_value = row.get(field)
+                print(f"DEBUG: Checking required field '{field}' for row {row_num}: value='{field_value}', type={type(field_value)}")
+
+                if pd.isna(field_value) or field_value == '' or field_value is None:
+                    error_msg = f'必填字段不能为空: {field}'
+                    print(f"DEBUG: ❌ Required field validation failed: {error_msg}")
                     errors.append({
                         'row': row_num,
                         'column': self._get_column_name(field, self.config.SUBTASK_FIELDS),
-                        'message': f'必填字段不能为空: {field}',
-                        'value': row.get(field)
+                        'message': error_msg,
+                        'value': field_value
                     })
+                else:
+                    print(f"DEBUG: ✓ Required field '{field}' passed validation")
 
             # Validate and normalize application L2 ID
             app_l2_id = row.get('application_l2_id')
+            print(f"DEBUG: Row {row_num} L2 ID check: original='{app_l2_id}'")
+
             if app_l2_id:
                 app_l2_id_str = str(app_l2_id).strip()
+                print(f"DEBUG: L2 ID after string conversion: '{app_l2_id_str}'")
+
                 # 如果不以L2_开头，自动添加前缀
                 if not app_l2_id_str.startswith('L2_'):
                     normalized_id = f'L2_{app_l2_id_str}'
+                    print(f"DEBUG: Normalized L2 ID: '{app_l2_id_str}' -> '{normalized_id}'")
                     # 更新DataFrame中的值
                     df.at[index, 'application_l2_id'] = normalized_id
                     app_l2_id = normalized_id
 
-                # 检查应用是否存在
+                # 检查应用是否存在（如果不存在，import时会自动创建）
                 if app_l2_id not in valid_l2_ids:
-                    errors.append({
-                        'row': row_num,
-                        'column': '应用L2 ID',
-                        'message': f'应用L2 ID不存在: {app_l2_id}',
-                        'value': app_l2_id
-                    })
+                    print(f"DEBUG: ⚠️ L2 ID '{app_l2_id}' not found in database, will be auto-created during import")
+                else:
+                    print(f"DEBUG: ✓ L2 ID '{app_l2_id}' found in database")
+            else:
+                print(f"DEBUG: ⚠️ No L2 ID provided for row {row_num}")
 
             # Validate and normalize sub_target (支持前端发送的值)
             sub_target = row.get('sub_target')
@@ -802,6 +832,12 @@ class ExcelService:
                     'message': '进度百分比必须在0-100之间',
                     'value': progress
                 })
+
+        print(f"DEBUG: Validation completed. Total errors: {len(errors)}")
+        if errors:
+            print(f"DEBUG: First 3 validation errors:")
+            for i, error in enumerate(errors[:3]):
+                print(f"DEBUG:   Error {i+1}: Row {error['row']} - {error['message']}")
 
         return errors
 
@@ -909,15 +945,38 @@ class ExcelService:
         # Get application ID mappings
         app_result = await db.execute(select(Application.id, Application.l2_id))
         app_id_map = {l2_id: app_id for app_id, l2_id in app_result.all()}
+        print(f"DEBUG: Found {len(app_id_map)} existing applications for mapping")
 
         for index, row in df.iterrows():
             try:
                 app_l2_id = row.get('application_l2_id')
                 application_id = app_id_map.get(app_l2_id)
 
+                # 如果应用不存在，自动创建placeholder应用
                 if not application_id:
-                    skipped += 1
-                    continue
+                    print(f"DEBUG: Application with L2 ID '{app_l2_id}' not found, creating placeholder application")
+
+                    # 创建placeholder应用
+                    new_app_data = {
+                        'l2_id': app_l2_id,
+                        'app_name': f'应用 {app_l2_id}',  # 默认应用名称
+                        'overall_status': '待启动',
+                        'transformation_target': 'AK',
+                        'current_stage': '待启动',
+                        'responsible_team': '待分配',
+                        'responsible_person': '待分配',
+                        'progress_percentage': 0,
+                        'created_by': user.id,
+                        'updated_by': user.id
+                    }
+
+                    new_application = Application(**new_app_data)
+                    db.add(new_application)
+                    await db.flush()  # 获取ID但不提交
+
+                    application_id = new_application.id
+                    app_id_map[app_l2_id] = application_id  # 更新映射以供后续行使用
+                    print(f"DEBUG: Created placeholder application with ID {application_id} for L2 ID '{app_l2_id}'")
 
                 # Check if subtask exists (based on application_id, module_name, sub_target)
                 existing = await db.execute(
