@@ -31,7 +31,10 @@
       "Read(//d/Program Files (x86)/CodeRepos/AKCNProjectManagement/AKCNFrontEnd/src/types/**)",
       "Read(//d/Program Files (x86)/CodeRepos/AKCNProjectManagement/AKCNFrontEnd/src/api/**)",
       "Read(//d/Program Files (x86)/CodeRepos/AKCNProjectManagement/AKCNFrontEnd/src/utils/**)",
-      "Read(//d/Program Files (x86)/CodeRepos/AKCNProjectManagement/AKCNFrontEnd/src/views/**)"
+      "Read(//d/Program Files (x86)/CodeRepos/AKCNProjectManagement/AKCNFrontEnd/src/views/**)",
+      "Bash(del test_excel_mapping.py)",
+      "Bash(del test_excel_mapping_simple.py)",
+      "Bash(del test_subtasks.xlsx)"
     ],
     "deny": [],
     "ask": []
