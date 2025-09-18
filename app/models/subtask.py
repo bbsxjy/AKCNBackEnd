@@ -26,9 +26,8 @@ class SubTask(Base):
     __tablename__ = "sub_tasks"
 
     id = Column(Integer, primary_key=True, index=True)
-    application_id = Column(Integer, ForeignKey("applications.id"), nullable=False, index=True)
-    module_name = Column(String(100), nullable=False)
-    sub_target = Column(String(20), nullable=False)  # AK | 云原生
+    l2_id = Column(Integer, ForeignKey("applications.id"), nullable=False, index=True)  # Changed from application_id
+    sub_target = Column(String(50), nullable=True)  # AK | 云原生
     version_name = Column(String(50), nullable=True)
     task_status = Column(String(50), default=SubTaskStatus.NOT_STARTED, nullable=False, index=True)
 
@@ -49,20 +48,14 @@ class SubTask(Base):
     actual_tech_online_date = Column(Date, nullable=True)
     actual_biz_online_date = Column(Date, nullable=True)
 
-    # Task details
-    requirements = Column(Text, nullable=True)
-    technical_notes = Column(Text, nullable=True)
-    test_notes = Column(Text, nullable=True)
-    deployment_notes = Column(Text, nullable=True)
+    # Notes
+    notes = Column(Text, nullable=True)
 
-    # Priority and effort estimation
-    priority = Column(Integer, default=1, nullable=False)  # 1=Low, 2=Medium, 3=High, 4=Critical
-    estimated_hours = Column(Integer, nullable=True)
-    actual_hours = Column(Integer, nullable=True)
-
-    # Responsible person
-    assigned_to = Column(String(50), nullable=True)
-    reviewer = Column(String(50), nullable=True)
+    # New fields
+    resource_applied = Column(Boolean, default=False, nullable=False)
+    ops_requirement_submitted = Column(DateTime, nullable=True)  # timestamp without timezone
+    ops_testing_status = Column(String(50), nullable=True)
+    launch_check_status = Column(String(50), nullable=True)
 
     # Audit fields
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
@@ -76,7 +69,7 @@ class SubTask(Base):
     updater = relationship("User", foreign_keys=[updated_by], back_populates="updated_subtasks")
 
     def __repr__(self):
-        return f"<SubTask(id={self.id}, app_id={self.application_id}, module='{self.module_name}', status='{self.task_status}')>"
+        return f"<SubTask(id={self.id}, l2_id={self.l2_id}, status='{self.task_status}')>"
 
     @property
     def is_completed(self) -> bool:
@@ -112,4 +105,35 @@ class SubTask(Base):
         elif not self.is_completed and date.today() > self.planned_biz_online_date:
             return (date.today() - self.planned_biz_online_date).days
 
+        return 0
+
+    # Backward compatibility properties for old field names
+    @property
+    def application_id(self) -> int:
+        """Backward compatibility for application_id."""
+        return self.l2_id
+
+    @property
+    def module_name(self) -> str:
+        """Backward compatibility - return empty string since field removed."""
+        return ""
+
+    @property
+    def technical_notes(self) -> str:
+        """Backward compatibility for technical_notes."""
+        return self.notes or ""
+
+    @property
+    def priority(self) -> int:
+        """Backward compatibility - return default priority."""
+        return 1
+
+    @property
+    def assigned_to(self) -> str:
+        """Backward compatibility - return empty string since field removed."""
+        return ""
+
+    @property
+    def estimated_hours(self) -> int:
+        """Backward compatibility - return 0 since field removed."""
         return 0

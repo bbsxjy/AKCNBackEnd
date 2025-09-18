@@ -30,17 +30,35 @@ class Application(Base):
     __tablename__ = "applications"
 
     id = Column(Integer, primary_key=True, index=True)
-    l2_id = Column(String(20), unique=True, nullable=False, index=True)
-    app_name = Column(String(100), nullable=False)
-    supervision_year = Column(Integer, nullable=False, index=True)
-    transformation_target = Column(String(20), nullable=False)
+    l2_id = Column(String(50), unique=True, nullable=False, index=True)
+    app_name = Column(String(200), nullable=False)
+
+    # Core tracking fields (renamed from old schema)
+    ak_supervision_acceptance_year = Column(Integer, nullable=True, index=True)
+    overall_transformation_target = Column(String(50), nullable=True)
     is_ak_completed = Column(Boolean, default=False, nullable=False)
     is_cloud_native_completed = Column(Boolean, default=False, nullable=False)
-    current_stage = Column(String(50), nullable=True)
-    overall_status = Column(String(50), default=ApplicationStatus.NOT_STARTED, nullable=False, index=True)
-    responsible_team = Column(String(50), nullable=False, index=True)
-    responsible_person = Column(String(50), nullable=True)
-    progress_percentage = Column(Integer, default=0, nullable=False)
+    current_transformation_phase = Column(String(50), nullable=True)
+    current_status = Column(String(50), default=ApplicationStatus.NOT_STARTED, nullable=False, index=True)
+
+    # New organizational fields
+    app_tier = Column(Integer, nullable=True)
+    belonging_l1_name = Column(String(100), nullable=True)
+    belonging_projects = Column(String(200), nullable=True)
+    is_domain_transformation_completed = Column(Boolean, default=False, nullable=False)
+    is_dbpm_transformation_completed = Column(Boolean, default=False, nullable=False)
+
+    # New team and ownership fields
+    dev_mode = Column(String(50), nullable=True)
+    ops_mode = Column(String(50), nullable=True)
+    dev_owner = Column(String(50), nullable=True)
+    dev_team = Column(String(100), nullable=True)
+    ops_owner = Column(String(50), nullable=True)
+    ops_team = Column(String(100), nullable=True)
+
+    # New tracking fields
+    belonging_kpi = Column(String(100), nullable=True)
+    acceptance_status = Column(String(50), nullable=True)
 
     # Planned dates
     planned_requirement_date = Column(Date, nullable=True)
@@ -73,7 +91,7 @@ class Application(Base):
     subtasks = relationship("SubTask", back_populates="application", lazy="select", cascade="all, delete-orphan")
 
     def __repr__(self):
-        return f"<Application(id={self.id}, l2_id='{self.l2_id}', name='{self.app_name}', status='{self.overall_status}')>"
+        return f"<Application(id={self.id}, l2_id='{self.l2_id}', name='{self.app_name}', status='{self.current_status}')>"
 
     @property
     def subtask_count(self) -> int:
@@ -101,3 +119,39 @@ class Application(Base):
             return 0.0
         completed = self.completed_subtask_count
         return (completed / count) * 100
+
+    @property
+    def progress_percentage(self) -> int:
+        """Calculate progress percentage from subtasks."""
+        return int(self.completion_rate)
+
+    @property
+    def responsible_team(self) -> str:
+        """Get responsible team - use dev_team as primary."""
+        return self.dev_team or self.ops_team or "待分配"
+
+    @property
+    def responsible_person(self) -> str:
+        """Get responsible person - use dev_owner as primary."""
+        return self.dev_owner or self.ops_owner or "待分配"
+
+    # Backward compatibility properties for old field names
+    @property
+    def supervision_year(self) -> int:
+        """Backward compatibility for supervision_year."""
+        return self.ak_supervision_acceptance_year
+
+    @property
+    def transformation_target(self) -> str:
+        """Backward compatibility for transformation_target."""
+        return self.overall_transformation_target
+
+    @property
+    def current_stage(self) -> str:
+        """Backward compatibility for current_stage."""
+        return self.current_transformation_phase
+
+    @property
+    def overall_status(self) -> str:
+        """Backward compatibility for overall_status."""
+        return self.current_status

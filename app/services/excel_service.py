@@ -42,14 +42,43 @@ class ExcelMappingConfig:
     APPLICATION_FIELDS = {
         # 前端发送的英文字段名
         'application_id': 'l2_id',
+        'l2_id': 'l2_id',
         'application_name': 'app_name',
-        'supervision_year': 'supervision_year',
-        'transformation_target': 'transformation_target',
-        'current_stage': 'current_stage',
-        'status': 'overall_status',
-        'responsible_team': 'responsible_team',
-        'responsible_person': 'responsible_person',
-        'progress_percentage': 'progress_percentage',
+        'app_name': 'app_name',
+
+        # Old field names mapping to new database columns
+        'supervision_year': 'ak_supervision_acceptance_year',
+        'ak_supervision_acceptance_year': 'ak_supervision_acceptance_year',
+        'transformation_target': 'overall_transformation_target',
+        'overall_transformation_target': 'overall_transformation_target',
+        'current_stage': 'current_transformation_phase',
+        'current_transformation_phase': 'current_transformation_phase',
+        'status': 'current_status',
+        'overall_status': 'current_status',
+        'current_status': 'current_status',
+
+        # Team and ownership fields
+        'responsible_team': 'dev_team',  # Map to dev_team
+        'dev_team': 'dev_team',
+        'ops_team': 'ops_team',
+        'responsible_person': 'dev_owner',  # Map to dev_owner
+        'dev_owner': 'dev_owner',
+        'ops_owner': 'ops_owner',
+
+        # New fields
+        'app_tier': 'app_tier',
+        'belonging_l1_name': 'belonging_l1_name',
+        'belonging_projects': 'belonging_projects',
+        'is_ak_completed': 'is_ak_completed',
+        'is_cloud_native_completed': 'is_cloud_native_completed',
+        'is_domain_transformation_completed': 'is_domain_transformation_completed',
+        'is_dbpm_transformation_completed': 'is_dbpm_transformation_completed',
+        'dev_mode': 'dev_mode',
+        'ops_mode': 'ops_mode',
+        'belonging_kpi': 'belonging_kpi',
+        'acceptance_status': 'acceptance_status',
+        'is_delayed': 'is_delayed',
+        'delay_days': 'delay_days',
         'planned_requirement_date': 'planned_requirement_date',
         'planned_release_date': 'planned_release_date',
         'planned_tech_online_date': 'planned_tech_online_date',
@@ -59,11 +88,6 @@ class ExcelMappingConfig:
         'actual_tech_online_date': 'actual_tech_online_date',
         'actual_biz_online_date': 'actual_biz_online_date',
         'notes': 'notes',
-        'business_domain': 'business_domain',
-        'business_subdomain': 'business_subdomain',
-        'service_tier': 'service_tier',
-        'priority': 'priority',
-        'delay_status': 'delay_status',
         # 保留中文字段名兼容性（扩展更多变体）
         'L2 ID': 'l2_id',
         'L2ID': 'l2_id',
@@ -82,57 +106,71 @@ class ExcelMappingConfig:
         'L2应用名称': 'app_name',
         '名称': 'app_name',
 
-        '监管年': 'supervision_year',
-        '监管年度': 'supervision_year',
-        '监管年份': 'supervision_year',
-        '年度': 'supervision_year',
-        '指标年度': 'supervision_year',
-        '指标标签': 'supervision_year',
+        '监管年': 'ak_supervision_acceptance_year',
+        '监管年度': 'ak_supervision_acceptance_year',
+        '监管年份': 'ak_supervision_acceptance_year',
+        '年度': 'ak_supervision_acceptance_year',
+        '指标年度': 'ak_supervision_acceptance_year',
+        '指标标签': 'ak_supervision_acceptance_year',
+        'AK监管验收年': 'ak_supervision_acceptance_year',
+        '验收年度': 'ak_supervision_acceptance_year',
 
-        '转型目标': 'transformation_target',
-        '改造目标': 'transformation_target',
-        '目标': 'transformation_target',
-        '改造类型': 'transformation_target',
-        'AK/云原生': 'transformation_target',
-        'AK/Cloud': 'transformation_target',
-        '改造方向': 'transformation_target',
+        '转型目标': 'overall_transformation_target',
+        '改造目标': 'overall_transformation_target',
+        '目标': 'overall_transformation_target',
+        '改造类型': 'overall_transformation_target',
+        'AK/云原生': 'overall_transformation_target',
+        'AK/Cloud': 'overall_transformation_target',
+        '改造方向': 'overall_transformation_target',
+        '整体转型目标': 'overall_transformation_target',
 
-        '当前阶段': 'current_stage',
-        '当前状态': 'current_stage',
-        '阶段': 'current_stage',
-        '进展阶段': 'current_stage',
-        '开发阶段': 'current_stage',
-        '改造阶段': 'current_stage',
+        '当前阶段': 'current_transformation_phase',
+        '当前状态': 'current_transformation_phase',
+        '阶段': 'current_transformation_phase',
+        '进展阶段': 'current_transformation_phase',
+        '开发阶段': 'current_transformation_phase',
+        '改造阶段': 'current_transformation_phase',
+        '当前转型阶段': 'current_transformation_phase',
 
-        '整体状态': 'overall_status',
-        '状态': 'overall_status',
-        '总体状态': 'overall_status',
-        '完成状态': 'overall_status',
-        '改造状态': 'overall_status',
-        '整体进展': 'overall_status',
+        '整体状态': 'current_status',
+        '状态': 'current_status',
+        '总体状态': 'current_status',
+        '完成状态': 'current_status',
+        '改造状态': 'current_status',
+        '整体进展': 'current_status',
+        '当前状态': 'current_status',
 
-        '负责团队': 'responsible_team',
-        '团队': 'responsible_team',
-        '开发团队': 'responsible_team',
-        '改造团队': 'responsible_team',
-        '负责部门': 'responsible_team',
-        '责任团队': 'responsible_team',
-        '所属团队': 'responsible_team',
+        '负责团队': 'dev_team',
+        '团队': 'dev_team',
+        '开发团队': 'dev_team',
+        '改造团队': 'dev_team',
+        '负责部门': 'dev_team',
+        '责任团队': 'dev_team',
+        '所属团队': 'dev_team',
+        '运维团队': 'ops_team',
 
-        '负责人': 'responsible_person',
-        '责任人': 'responsible_person',
-        '开发负责人': 'responsible_person',
-        '项目负责人': 'responsible_person',
-        '团队负责人': 'responsible_person',
-        '联系人': 'responsible_person',
+        '负责人': 'dev_owner',
+        '责任人': 'dev_owner',
+        '开发负责人': 'dev_owner',
+        '项目负责人': 'dev_owner',
+        '团队负责人': 'dev_owner',
+        '联系人': 'dev_owner',
+        '运维负责人': 'ops_owner',
 
-        '进度百分比': 'progress_percentage',
-        '进度': 'progress_percentage',
-        '完成进度': 'progress_percentage',
-        '完成百分比': 'progress_percentage',
-        '进度(%)': 'progress_percentage',
-        '进度%': 'progress_percentage',
-        '整体进度': 'progress_percentage',
+        # New organizational fields Chinese mappings
+        '应用层级': 'app_tier',
+        '所属L1名称': 'belonging_l1_name',
+        '所属项目': 'belonging_projects',
+        'AK完成': 'is_ak_completed',
+        '云原生完成': 'is_cloud_native_completed',
+        '领域转型完成': 'is_domain_transformation_completed',
+        'DBPM转型完成': 'is_dbpm_transformation_completed',
+        '开发模式': 'dev_mode',
+        '运维模式': 'ops_mode',
+        '所属KPI': 'belonging_kpi',
+        '验收状态': 'acceptance_status',
+        '是否延期': 'is_delayed',
+        '延期天数': 'delay_days',
 
         '计划需求日期': 'planned_requirement_date',
         '计划需求': 'planned_requirement_date',
@@ -219,8 +257,6 @@ class ExcelMappingConfig:
         'L2 ID': 'application_l2_id',       # Excel中的空格版本
         '应用L2 ID': 'application_l2_id',   # 完整版本
         'L2应用名': 'application_name',     # 应用名称字段
-        '应用名称': 'application_name',     # 应用名称完整版本
-        '模块名称': 'module_name',
         '子目标': 'sub_target',
         '版本名': 'version_name',           # 简化版本
         '版本名称': 'version_name',         # 完整版本
@@ -248,20 +284,20 @@ class ExcelMappingConfig:
         '【计划】\n业务上线时间': 'planned_biz_online_date',
         '【实际】\n业务上线时间': 'actual_biz_online_date',
         # 其他字段
-        '开发负责人': 'assigned_to',
-        '开发团队': 'assigned_to',
-        '运维负责人': 'reviewer',
-        '运维团队': 'reviewer',
-        '工作量估算': 'estimated_hours',
-        '负责人': 'assigned_to',
-        '备注': 'technical_notes',
-        '子表备注': 'technical_notes',
-        '主表同步备注': 'technical_notes'
+        '备注': 'notes',
+        '子表备注': 'notes',
+        '主表同步备注': 'notes',
+
+        # New fields Chinese mappings
+        '资源已申请': 'resource_applied',
+        '运维需求提交时间': 'ops_requirement_submitted',
+        '运维测试状态': 'ops_testing_status',
+        '上线检查状态': 'launch_check_status'
     }
 
     # Required fields (调整为更宽松的验证，适配前端数据)
     APPLICATION_REQUIRED = ['l2_id']  # 只要求L2 ID为必填，其他字段可以为空
-    SUBTASK_REQUIRED = ['application_l2_id']  # 只要求应用L2 ID为必填，其他字段可以为空并设置默认值
+    SUBTASK_REQUIRED = ['l2_id']  # 只要求L2 ID为必填，其他字段可以为空并设置默认值
 
     # Data type mappings
     DATE_FIELDS = [
@@ -269,8 +305,17 @@ class ExcelMappingConfig:
         'actual_requirement_date', 'actual_release_date', 'actual_tech_online_date', 'actual_biz_online_date'
     ]
 
-    INTEGER_FIELDS = ['supervision_year', 'progress_percentage', 'estimated_hours', 'actual_hours', 'priority']
-    BOOLEAN_FIELDS = ['is_blocked', 'is_ak_completed', 'is_cloud_native_completed']
+    DATETIME_FIELDS = ['ops_requirement_submitted']  # Timestamp fields
+
+    INTEGER_FIELDS = [
+        'ak_supervision_acceptance_year', 'app_tier', 'progress_percentage', 'delay_days', 'l2_id'
+    ]
+
+    BOOLEAN_FIELDS = [
+        'is_blocked', 'is_ak_completed', 'is_cloud_native_completed',
+        'is_domain_transformation_completed', 'is_dbpm_transformation_completed',
+        'is_delayed', 'resource_applied'
+    ]
 
 
 class ExcelService:
