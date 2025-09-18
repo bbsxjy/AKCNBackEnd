@@ -25,7 +25,8 @@
       "Bash(dir:*)",
       "Bash(git reset:*)",
       "Bash(del nul)",
-      "Bash(del test_excel_import.py)"
+      "Bash(del test_excel_import.py)",
+      "Bash(timeout:*)"
     ],
     "deny": [],
     "ask": []
