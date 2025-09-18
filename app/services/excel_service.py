@@ -17,7 +17,6 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.utils import get_column_letter
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
-from sqlalchemy.orm import selectinload
 
 from app.models.application import Application, ApplicationStatus, TransformationTarget
 from app.models.subtask import SubTask, SubTaskStatus
@@ -1225,94 +1224,104 @@ class ExcelService:
         updated = 0
         skipped = 0
 
-        for index, row in df.iterrows():
+        # Get user_id as integer to avoid relationship loading
+        user_id = user.id if user else None
+        if not user_id:
+            raise ValueError("User ID is required for import")
+
+        # Disable autoflush for the entire operation
+        async with db.begin_nested():  # Create savepoint
+            original_autoflush = db.autoflush
+            db.autoflush = False
+
             try:
-                l2_id = row.get('l2_id')
+                for index, row in df.iterrows():
+                    try:
+                        l2_id = row.get('l2_id')
 
-                # Check if application exists
-                # Use selectinload to prevent lazy loading issues in async context
-                existing = await db.execute(
-                    select(Application)
-                    .options(selectinload(Application.creator), selectinload(Application.updater))
-                    .where(Application.l2_id == l2_id)
-                )
-                existing_app = existing.scalar_one_or_none()
+                        # Check if application exists
+                        # Don't load relationships to avoid async context issues
+                        stmt = select(Application).where(Application.l2_id == l2_id)
+                        result = await db.execute(stmt)
+                        existing_app = result.scalar_one_or_none()
 
-                if existing_app:
-                    # Update existing application (只更新Application模型支持的字段)
-                    application_model_fields = {
-                        'l2_id', 'app_name', 'ak_supervision_acceptance_year', 'overall_transformation_target',
-                        'current_transformation_phase', 'current_status', 'app_tier', 'belonging_l1_name',
-                        'belonging_projects', 'is_ak_completed', 'is_cloud_native_completed',
-                        'is_domain_transformation_completed', 'is_dbpm_transformation_completed',
-                        'dev_mode', 'ops_mode', 'dev_owner', 'dev_team', 'ops_owner', 'ops_team',
-                        'belonging_kpi', 'acceptance_status', 'planned_requirement_date', 'planned_release_date',
-                        'planned_tech_online_date', 'planned_biz_online_date', 'actual_requirement_date',
-                        'actual_release_date', 'actual_tech_online_date', 'actual_biz_online_date',
-                        'is_delayed', 'delay_days', 'notes'
-                    }
+                        if existing_app:
+                            # Update existing application (只更新Application模型支持的字段)
+                            application_model_fields = {
+                                'l2_id', 'app_name', 'ak_supervision_acceptance_year', 'overall_transformation_target',
+                                'current_transformation_phase', 'current_status', 'app_tier', 'belonging_l1_name',
+                                'belonging_projects', 'is_ak_completed', 'is_cloud_native_completed',
+                                'is_domain_transformation_completed', 'is_dbpm_transformation_completed',
+                                'dev_mode', 'ops_mode', 'dev_owner', 'dev_team', 'ops_owner', 'ops_team',
+                                'belonging_kpi', 'acceptance_status', 'planned_requirement_date', 'planned_release_date',
+                                'planned_tech_online_date', 'planned_biz_online_date', 'actual_requirement_date',
+                                'actual_release_date', 'actual_tech_online_date', 'actual_biz_online_date',
+                                'is_delayed', 'delay_days', 'notes'
+                            }
 
-                    for field, value in row.items():
-                        if field in application_model_fields and value is not None and value != '' and hasattr(existing_app, field):
-                            setattr(existing_app, field, value)
+                            for field, value in row.items():
+                                if field in application_model_fields and value is not None and value != '' and hasattr(existing_app, field):
+                                    setattr(existing_app, field, value)
 
-                    # 更新修改者信息
-                    existing_app.updated_by = user.id
-                    updated += 1
-                else:
-                    # Create new application (只包含Application模型支持的字段)
-                    app_data = {}
-                    application_model_fields = {
-                        'l2_id', 'app_name', 'ak_supervision_acceptance_year', 'overall_transformation_target',
-                        'current_transformation_phase', 'current_status', 'app_tier', 'belonging_l1_name',
-                        'belonging_projects', 'is_ak_completed', 'is_cloud_native_completed',
-                        'is_domain_transformation_completed', 'is_dbpm_transformation_completed',
-                        'dev_mode', 'ops_mode', 'dev_owner', 'dev_team', 'ops_owner', 'ops_team',
-                        'belonging_kpi', 'acceptance_status', 'planned_requirement_date', 'planned_release_date',
-                        'planned_tech_online_date', 'planned_biz_online_date', 'actual_requirement_date',
-                        'actual_release_date', 'actual_tech_online_date', 'actual_biz_online_date',
-                        'is_delayed', 'delay_days', 'notes'
-                    }
+                            # 更新修改者信息 - use user_id directly
+                            existing_app.updated_by = user_id
+                            updated += 1
+                        else:
+                            # Create new application (只包含Application模型支持的字段)
+                            app_data = {}
+                            application_model_fields = {
+                                'l2_id', 'app_name', 'ak_supervision_acceptance_year', 'overall_transformation_target',
+                                'current_transformation_phase', 'current_status', 'app_tier', 'belonging_l1_name',
+                                'belonging_projects', 'is_ak_completed', 'is_cloud_native_completed',
+                                'is_domain_transformation_completed', 'is_dbpm_transformation_completed',
+                                'dev_mode', 'ops_mode', 'dev_owner', 'dev_team', 'ops_owner', 'ops_team',
+                                'belonging_kpi', 'acceptance_status', 'planned_requirement_date', 'planned_release_date',
+                                'planned_tech_online_date', 'planned_biz_online_date', 'actual_requirement_date',
+                                'actual_release_date', 'actual_tech_online_date', 'actual_biz_online_date',
+                                'is_delayed', 'delay_days', 'notes'
+                            }
 
-                    for k, v in row.items():
-                        if k in application_model_fields and v is not None and v != '':
-                            app_data[k] = v
+                            for k, v in row.items():
+                                if k in application_model_fields and v is not None and v != '':
+                                    app_data[k] = v
 
-                    # 添加必需的默认值
-                    if 'created_by' not in app_data:
-                        app_data['created_by'] = user.id
-                    if 'updated_by' not in app_data:
-                        app_data['updated_by'] = user.id
+                            # 添加必需的默认值 - use user_id directly
+                            app_data['created_by'] = user_id
+                            app_data['updated_by'] = user_id
 
-                    # 确保必需字段有默认值
-                    if 'dev_team' not in app_data or not app_data['dev_team']:
-                        app_data['dev_team'] = '待分配'
-                    if 'app_name' not in app_data or not app_data['app_name']:
-                        # Keep app_name empty if not provided - don't use l2_id
-                        app_data['app_name'] = '未命名应用'
-                    if 'ak_supervision_acceptance_year' not in app_data or not app_data['ak_supervision_acceptance_year']:
-                        app_data['ak_supervision_acceptance_year'] = 2024
-                    if 'overall_transformation_target' not in app_data or not app_data['overall_transformation_target']:
-                        app_data['overall_transformation_target'] = 'AK'
-                    if 'current_status' not in app_data or not app_data['current_status']:
-                        app_data['current_status'] = '待启动'
+                            # 确保必需字段有默认值
+                            if 'dev_team' not in app_data or not app_data['dev_team']:
+                                app_data['dev_team'] = '待分配'
+                            if 'app_name' not in app_data or not app_data['app_name']:
+                                # Keep app_name empty if not provided - don't use l2_id
+                                app_data['app_name'] = '未命名应用'
+                            if 'ak_supervision_acceptance_year' not in app_data or not app_data['ak_supervision_acceptance_year']:
+                                app_data['ak_supervision_acceptance_year'] = 2024
+                            if 'overall_transformation_target' not in app_data or not app_data['overall_transformation_target']:
+                                app_data['overall_transformation_target'] = 'AK'
+                            if 'current_status' not in app_data or not app_data['current_status']:
+                                app_data['current_status'] = '待启动'
 
-                    new_app = Application(**app_data)
-                    db.add(new_app)
-                    imported += 1
+                            new_app = Application(**app_data)
+                            db.add(new_app)
+                            imported += 1
 
-                # Commit every 10 rows to balance performance and safety
-                if (imported + updated) % 10 == 0:
-                    await db.commit()
+                    except Exception as e:
+                        print(f"Error importing row {index + 2}: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        skipped += 1
+                        continue
 
-            except Exception as e:
-                print(f"Error importing row {index + 2}: {e}")
-                # 遇到错误时rollback当前事务，继续处理下一行
-                await db.rollback()
-                skipped += 1
-                continue
+                # Flush periodically but don't commit inside the loop
+                if (imported + updated) % 50 == 0:
+                    await db.flush()
 
-        # Final commit for any remaining rows
+            finally:
+                # Restore autoflush state
+                db.autoflush = original_autoflush
+
+        # Commit all changes at once outside the no-autoflush context
         await db.commit()
 
         # Log final statistics
@@ -1333,130 +1342,141 @@ class ExcelService:
         updated = 0
         skipped = 0
 
+        # Get user_id as integer to avoid relationship loading
+        user_id = user.id if user else None
+        if not user_id:
+            raise ValueError("User ID is required for import")
+
         # Get application ID mappings
         app_result = await db.execute(select(Application.id, Application.l2_id))
         app_id_map = {l2_id: app_id for app_id, l2_id in app_result.all()}
         print(f"DEBUG: Found {len(app_id_map)} existing applications for mapping")
 
-        for index, row in df.iterrows():
+        # Disable autoflush for the entire operation
+        async with db.begin_nested():  # Create savepoint
+            # Store original autoflush state
+            original_autoflush = db.autoflush
+            db.autoflush = False
+
             try:
-                app_l2_id = row.get('l2_id')  # Now looking for l2_id field in Excel
+                for index, row in df.iterrows():
+                    try:
+                        app_l2_id = row.get('l2_id')  # Now looking for l2_id field in Excel
 
-                # Skip rows with empty L2 ID
-                if pd.isna(app_l2_id) or app_l2_id == '' or app_l2_id is None:
-                    skipped += 1
-                    if skipped <= 5:  # Log first 5 skipped rows
-                        print(f"DEBUG: Skipping row {index + 2} - empty L2 ID")
-                    continue
+                        # Skip rows with empty L2 ID
+                        if pd.isna(app_l2_id) or app_l2_id == '' or app_l2_id is None:
+                            skipped += 1
+                            if skipped <= 5:  # Log first 5 skipped rows
+                                print(f"DEBUG: Skipping row {index + 2} - empty L2 ID")
+                            continue
 
-                application_id = app_id_map.get(app_l2_id)
+                        application_id = app_id_map.get(app_l2_id)
 
-                # 如果应用不存在，自动创建placeholder应用
-                if not application_id:
-                    print(f"DEBUG: Application with L2 ID '{app_l2_id}' not found, creating placeholder application")
+                        # 如果应用不存在，自动创建placeholder应用
+                        if not application_id:
+                            print(f"DEBUG: Application with L2 ID '{app_l2_id}' not found, creating placeholder application")
 
-                    # 创建placeholder应用
-                    new_app_data = {
-                        'l2_id': app_l2_id,
-                        'app_name': '未命名应用',  # Default name when creating placeholder
-                        'current_status': '待启动',
-                        'overall_transformation_target': 'AK',
-                        'current_transformation_phase': '待启动',
-                        'dev_team': '待分配',
-                        'dev_owner': '待分配',
-                        'created_by': user.id,
-                        'updated_by': user.id
-                    }
+                            # 创建placeholder应用 - use user_id directly
+                            new_app_data = {
+                                'l2_id': app_l2_id,
+                                'app_name': '未命名应用',  # Default name when creating placeholder
+                                'current_status': '待启动',
+                                'overall_transformation_target': 'AK',
+                                'current_transformation_phase': '待启动',
+                                'dev_team': '待分配',
+                                'dev_owner': '待分配',
+                                'created_by': user_id,  # Use integer directly
+                                'updated_by': user_id   # Use integer directly
+                            }
 
-                    new_application = Application(**new_app_data)
-                    db.add(new_application)
-                    await db.flush()  # 获取ID但不提交
+                            new_application = Application(**new_app_data)
+                            db.add(new_application)
+                            await db.flush()  # 获取ID但不提交
 
-                    application_id = new_application.id
-                    app_id_map[app_l2_id] = application_id  # 更新映射以供后续行使用
-                    print(f"DEBUG: Created placeholder application with ID {application_id} for L2 ID '{app_l2_id}'")
+                            application_id = new_application.id
+                            app_id_map[app_l2_id] = application_id  # 更新映射以供后续行使用
+                            print(f"DEBUG: Created placeholder application with ID {application_id} for L2 ID '{app_l2_id}'")
 
-                # Check if subtask exists (based on l2_id and sub_target)
-                # Use selectinload to prevent lazy loading issues in async context
-                existing = await db.execute(
-                    select(SubTask)
-                    .options(selectinload(SubTask.creator), selectinload(SubTask.updater))
-                    .where(
-                        and_(
-                            SubTask.l2_id == application_id,  # l2_id now stores the application ID
-                            SubTask.sub_target == row.get('sub_target')
+                        # Check if subtask exists (based on l2_id and sub_target)
+                        # Don't load relationships to avoid async context issues
+                        stmt = select(SubTask).where(
+                            and_(
+                                SubTask.l2_id == application_id,  # l2_id now stores the application ID
+                                SubTask.sub_target == row.get('sub_target')
+                            )
                         )
-                    )
-                )
-                existing_subtask = existing.scalar_one_or_none()
+                        result = await db.execute(stmt)
+                        existing_subtask = result.scalar_one_or_none()
 
-                if existing_subtask:
-                    # Update existing subtask (只更新SubTask模型支持的字段)
-                    subtask_model_fields = {
-                        'sub_target', 'version_name', 'task_status',
-                        'progress_percentage', 'is_blocked', 'block_reason',
-                        'planned_requirement_date', 'planned_release_date', 'planned_tech_online_date', 'planned_biz_online_date',
-                        'actual_requirement_date', 'actual_release_date', 'actual_tech_online_date', 'actual_biz_online_date',
-                        'notes', 'resource_applied', 'ops_requirement_submitted', 'ops_testing_status', 'launch_check_status'
-                    }
+                        if existing_subtask:
+                            # Update existing subtask (只更新SubTask模型支持的字段)
+                            subtask_model_fields = {
+                                'sub_target', 'version_name', 'task_status',
+                                'progress_percentage', 'is_blocked', 'block_reason',
+                                'planned_requirement_date', 'planned_release_date', 'planned_tech_online_date', 'planned_biz_online_date',
+                                'actual_requirement_date', 'actual_release_date', 'actual_tech_online_date', 'actual_biz_online_date',
+                                'notes', 'resource_applied', 'ops_requirement_submitted', 'ops_testing_status', 'launch_check_status'
+                            }
 
-                    for field, value in row.items():
-                        if field in subtask_model_fields and value is not None and value != '' and hasattr(existing_subtask, field):
-                            setattr(existing_subtask, field, value)
+                            for field, value in row.items():
+                                if field in subtask_model_fields and value is not None and value != '' and hasattr(existing_subtask, field):
+                                    setattr(existing_subtask, field, value)
 
-                    # 更新修改者信息
-                    existing_subtask.updated_by = user.id
-                    updated += 1
-                else:
-                    # Create new subtask (只包含SubTask模型支持的字段)
-                    subtask_data = {}
-                    subtask_model_fields = {
-                        'sub_target', 'version_name', 'task_status',
-                        'progress_percentage', 'is_blocked', 'block_reason',
-                        'planned_requirement_date', 'planned_release_date', 'planned_tech_online_date', 'planned_biz_online_date',
-                        'actual_requirement_date', 'actual_release_date', 'actual_tech_online_date', 'actual_biz_online_date',
-                        'notes', 'resource_applied', 'ops_requirement_submitted', 'ops_testing_status', 'launch_check_status'
-                    }
+                            # 更新修改者信息 - use user_id directly
+                            existing_subtask.updated_by = user_id  # Use integer directly
+                            updated += 1
+                        else:
+                            # Create new subtask (只包含SubTask模型支持的字段)
+                            subtask_data = {}
+                            subtask_model_fields = {
+                                'sub_target', 'version_name', 'task_status',
+                                'progress_percentage', 'is_blocked', 'block_reason',
+                                'planned_requirement_date', 'planned_release_date', 'planned_tech_online_date', 'planned_biz_online_date',
+                                'actual_requirement_date', 'actual_release_date', 'actual_tech_online_date', 'actual_biz_online_date',
+                                'notes', 'resource_applied', 'ops_requirement_submitted', 'ops_testing_status', 'launch_check_status'
+                            }
 
-                    for k, v in row.items():
-                        if k in subtask_model_fields and v is not None and v != '':
-                            subtask_data[k] = v
+                            for k, v in row.items():
+                                if k in subtask_model_fields and v is not None and v != '':
+                                    subtask_data[k] = v
 
-                    # 添加必需的默认值
-                    subtask_data['l2_id'] = application_id  # Now using l2_id to store application ID
-                    if 'created_by' not in subtask_data:
-                        subtask_data['created_by'] = user.id
-                    if 'updated_by' not in subtask_data:
-                        subtask_data['updated_by'] = user.id
+                            # 添加必需的默认值 - use user_id directly
+                            subtask_data['l2_id'] = application_id  # Now using l2_id to store application ID
+                            subtask_data['created_by'] = user_id  # Use integer directly
+                            subtask_data['updated_by'] = user_id  # Use integer directly
 
-                    # 确保必需字段有默认值
-                    if 'sub_target' not in subtask_data or not subtask_data['sub_target']:
-                        subtask_data['sub_target'] = 'AK'
-                    if 'task_status' not in subtask_data or not subtask_data['task_status']:
-                        subtask_data['task_status'] = '待启动'
-                    if 'progress_percentage' not in subtask_data:
-                        subtask_data['progress_percentage'] = 0
-                    if 'is_blocked' not in subtask_data:
-                        subtask_data['is_blocked'] = False
-                    if 'resource_applied' not in subtask_data:
-                        subtask_data['resource_applied'] = False
+                            # 确保必需字段有默认值
+                            if 'sub_target' not in subtask_data or not subtask_data['sub_target']:
+                                subtask_data['sub_target'] = 'AK'
+                            if 'task_status' not in subtask_data or not subtask_data['task_status']:
+                                subtask_data['task_status'] = '待启动'
+                            if 'progress_percentage' not in subtask_data:
+                                subtask_data['progress_percentage'] = 0
+                            if 'is_blocked' not in subtask_data:
+                                subtask_data['is_blocked'] = False
+                            if 'resource_applied' not in subtask_data:
+                                subtask_data['resource_applied'] = False
 
-                    new_subtask = SubTask(**subtask_data)
-                    db.add(new_subtask)
-                    imported += 1
+                            new_subtask = SubTask(**subtask_data)
+                            db.add(new_subtask)
+                            imported += 1
 
-                # Commit every 10 rows to balance performance and safety
-                if (imported + updated) % 10 == 0:
-                    await db.commit()
+                    except Exception as e:
+                        print(f"Error importing subtask row {index + 2}: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        skipped += 1
+                        continue
 
-            except Exception as e:
-                print(f"Error importing subtask row {index + 2}: {e}")
-                # 遇到错误时rollback当前事务，继续处理下一行
-                await db.rollback()
-                skipped += 1
-                continue
+                # Flush periodically but don't commit inside the loop
+                if (imported + updated) % 50 == 0:
+                    await db.flush()
 
-        # Final commit for any remaining rows
+            finally:
+                # Restore autoflush state
+                db.autoflush = original_autoflush
+
+        # Commit all changes at once outside the no-autoflush context
         await db.commit()
 
         # Log final statistics
