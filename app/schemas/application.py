@@ -12,7 +12,7 @@ class ApplicationBase(BaseModel):
     """Base application schema with common fields."""
     l2_id: str = Field(..., description="L2 ID (unique identifier)", min_length=1, max_length=20)
     app_name: str = Field(..., description="Application name", min_length=1, max_length=100)
-    supervision_year: int = Field(..., description="Supervision year", ge=2024, le=2030)
+    supervision_year: int = Field(..., description="Supervision year")
     transformation_target: TransformationTarget = Field(..., description="Transformation target")
     responsible_team: str = Field(..., description="Responsible team", max_length=50)
     responsible_person: Optional[str] = Field(None, description="Responsible person", max_length=50)
@@ -67,7 +67,7 @@ class ApplicationCreate(ApplicationBase):
 class ApplicationUpdate(BaseModel):
     """Schema for updating an application."""
     app_name: Optional[str] = Field(None, description="Application name", min_length=1, max_length=100)
-    supervision_year: Optional[int] = Field(None, description="Supervision year", ge=2024, le=2030)
+    supervision_year: Optional[int] = Field(None, description="Supervision year")
     transformation_target: Optional[TransformationTarget] = Field(None, description="Transformation target")
     responsible_team: Optional[str] = Field(None, description="Responsible team", max_length=50)
     responsible_person: Optional[str] = Field(None, description="Responsible person", max_length=50)
