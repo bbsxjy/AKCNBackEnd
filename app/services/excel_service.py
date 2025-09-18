@@ -40,13 +40,51 @@ class ExcelMappingConfig:
 
     # Application field mappings (支持前端发送的英文字段名)
     APPLICATION_FIELDS = {
-        # 前端发送的英文字段名
+        # 前端发送的英文字段名 - 保留原有的英文字段映射
         'application_id': 'l2_id',
         'l2_id': 'l2_id',
         'application_name': 'app_name',
         'app_name': 'app_name',
 
-        # Old field names mapping to new database columns
+        # 用户指定的精确中文列名映射
+        'L2ID': 'l2_id',
+        'L2应用': 'app_name',
+        '监管验收年份': 'ak_supervision_acceptance_year',
+        '改造目标': 'overall_transformation_target',
+        '是否已完成AK': 'is_ak_completed',
+        '是否已完成云原生': 'is_cloud_native_completed',
+        '当前改造阶段': 'current_transformation_phase',
+        '改造状态': 'current_status',
+        '【计划】\n需求完成时间': 'planned_requirement_date',
+        '【计划】需求完成时间': 'planned_requirement_date',  # 无换行版本
+        '【计划】\n发版时间': 'planned_release_date',
+        '【计划】发版时间': 'planned_release_date',  # 无换行版本
+        '【计划】\n技术上线时间': 'planned_tech_online_date',
+        '【计划】技术上线时间': 'planned_tech_online_date',  # 无换行版本
+        '【计划】\n业务上线时间': 'planned_biz_online_date',
+        '【计划】业务上线时间': 'planned_biz_online_date',  # 无换行版本
+        '【实际】\n需求到达时间': 'actual_requirement_date',
+        '【实际】需求到达时间': 'actual_requirement_date',  # 无换行版本
+        '【实际】\n发版时间': 'actual_release_date',
+        '【实际】发版时间': 'actual_release_date',  # 无换行版本
+        '【实际】\n技术上线时间': 'actual_tech_online_date',
+        '【实际】技术上线时间': 'actual_tech_online_date',  # 无换行版本
+        '【实际】\n业务上线时间': 'actual_biz_online_date',
+        '【实际】业务上线时间': 'actual_biz_online_date',  # 无换行版本
+        '备注': 'notes',
+        '档位': 'app_tier',
+        '所属L1': 'belonging_l1_name',
+        '所属项目': 'belonging_projects',
+        '开发模式': 'dev_mode',
+        '运维模式': 'ops_mode',
+        '开发负责人': 'dev_owner',
+        '开发团队': 'dev_team',
+        '运维负责人': 'ops_owner',
+        '运维团队': 'ops_team',
+        '所属指标': 'belonging_kpi',
+        '验收状态': 'acceptance_status',
+
+        # Old field names mapping to new database columns (保留英文字段支持)
         'supervision_year': 'ak_supervision_acceptance_year',
         'ak_supervision_acceptance_year': 'ak_supervision_acceptance_year',
         'transformation_target': 'overall_transformation_target',
@@ -57,15 +95,15 @@ class ExcelMappingConfig:
         'overall_status': 'current_status',
         'current_status': 'current_status',
 
-        # Team and ownership fields
-        'responsible_team': 'dev_team',  # Map to dev_team
+        # Team and ownership fields (英文支持)
+        'responsible_team': 'dev_team',
         'dev_team': 'dev_team',
         'ops_team': 'ops_team',
-        'responsible_person': 'dev_owner',  # Map to dev_owner
+        'responsible_person': 'dev_owner',
         'dev_owner': 'dev_owner',
         'ops_owner': 'ops_owner',
 
-        # New fields
+        # New fields (英文支持)
         'app_tier': 'app_tier',
         'belonging_l1_name': 'belonging_l1_name',
         'belonging_projects': 'belonging_projects',
@@ -88,9 +126,9 @@ class ExcelMappingConfig:
         'actual_tech_online_date': 'actual_tech_online_date',
         'actual_biz_online_date': 'actual_biz_online_date',
         'notes': 'notes',
-        # 保留中文字段名兼容性（扩展更多变体）
+
+        # 保留其他可能的中文变体（作为备用）
         'L2 ID': 'l2_id',
-        'L2ID': 'l2_id',
         'L2-ID': 'l2_id',
         'L2_ID': 'l2_id',
         'L2编号': 'l2_id',
@@ -114,9 +152,9 @@ class ExcelMappingConfig:
         '指标标签': 'ak_supervision_acceptance_year',
         'AK监管验收年': 'ak_supervision_acceptance_year',
         '验收年度': 'ak_supervision_acceptance_year',
+        '验收年份': 'ak_supervision_acceptance_year',
 
         '转型目标': 'overall_transformation_target',
-        '改造目标': 'overall_transformation_target',
         '目标': 'overall_transformation_target',
         '改造类型': 'overall_transformation_target',
         'AK/云原生': 'overall_transformation_target',
@@ -129,54 +167,42 @@ class ExcelMappingConfig:
         '阶段': 'current_transformation_phase',
         '进展阶段': 'current_transformation_phase',
         '开发阶段': 'current_transformation_phase',
-        '改造阶段': 'current_transformation_phase',
         '当前转型阶段': 'current_transformation_phase',
 
         '整体状态': 'current_status',
         '状态': 'current_status',
         '总体状态': 'current_status',
         '完成状态': 'current_status',
-        '改造状态': 'current_status',
         '整体进展': 'current_status',
         '当前状态': 'current_status',
 
         '负责团队': 'dev_team',
         '团队': 'dev_team',
-        '开发团队': 'dev_team',
         '改造团队': 'dev_team',
         '负责部门': 'dev_team',
         '责任团队': 'dev_team',
         '所属团队': 'dev_team',
-        '运维团队': 'ops_team',
 
         '负责人': 'dev_owner',
         '责任人': 'dev_owner',
-        '开发负责人': 'dev_owner',
         '项目负责人': 'dev_owner',
         '团队负责人': 'dev_owner',
         '联系人': 'dev_owner',
-        '运维负责人': 'ops_owner',
 
-        # Additional mappings from unmapped headers
+        # Additional mappings
         '是否已完成域名化改造': 'is_domain_transformation_completed',
         '是否已完成DBPM改造': 'is_dbpm_transformation_completed',
-        '运维模式': 'ops_mode',
         '研发模式': 'dev_mode',
         '是否完成验收': 'acceptance_status',
-        '验收年份': 'ak_supervision_acceptance_year',
 
-        # New organizational fields Chinese mappings
+        # 其他组织字段的中文映射
         '应用层级': 'app_tier',
         '所属L1名称': 'belonging_l1_name',
-        '所属项目': 'belonging_projects',
         'AK完成': 'is_ak_completed',
         '云原生完成': 'is_cloud_native_completed',
         '领域转型完成': 'is_domain_transformation_completed',
         'DBPM转型完成': 'is_dbpm_transformation_completed',
-        '开发模式': 'dev_mode',
-        '运维模式': 'ops_mode',
         '所属KPI': 'belonging_kpi',
-        '验收状态': 'acceptance_status',
         '是否延期': 'is_delayed',
         '延期天数': 'delay_days',
 
@@ -377,6 +403,11 @@ class ExcelService:
                     'total_rows': len(df),
                     'preview_data': df.head(5).to_dict('records') if not validation_errors else []
                 }
+
+            # Additional debugging before import
+            print(f"DEBUG: About to import applications with DataFrame columns: {list(df.columns)}")
+            if 'app_name' in df.columns and len(df) > 0:
+                print(f"DEBUG: First 3 app_name values: {list(df['app_name'].head(3))}")
 
             # Import data
             results = await self._import_applications_data(db, df, user)
@@ -681,7 +712,8 @@ class ExcelService:
             'L2', 'ID', '应用', '名称', '模块', '状态', '进度', '负责', '日期', '备注',
             'application', 'module', 'status', 'progress', 'date', 'team', 'person',
             '版本', '目标', '阶段', '团队', '百分比', 'name', 'target', '序号',
-            '系统', '监管', '改造', '开发', '上线', '发布', '需求',
+            '系统', '监管', '改造', '开发', '上线', '发布', '需求', '档位', '所属',
+            '模式', '指标', '验收', '【计划】', '【实际】', 'L2ID', 'L2应用',
             'l2_id', 'app_name', 'sub_target', 'version_name', 'task_status'  # Add English field names
         ]
 
@@ -711,6 +743,23 @@ class ExcelService:
                     print(f"DEBUG: Row {row_num} looks like statistics/summary, skipping...")
                     continue
 
+            # Check if this row looks like data (has many numbers/dates)
+            numeric_count = 0
+            for val in non_empty_values[:10]:  # Check first 10 values
+                try:
+                    # Check if it's a number
+                    float(val)
+                    numeric_count += 1
+                except:
+                    # Check if it's a date pattern
+                    if '-' in val and len(val) == 10:  # Likely YYYY-MM-DD
+                        numeric_count += 1
+
+            # If more than 30% of values are numeric/dates, likely a data row
+            if numeric_count > len(non_empty_values[:10]) * 0.3:
+                print(f"DEBUG: Row {row_num} looks like data (too many numbers/dates), skipping...")
+                continue
+
             # Check if this row contains header keywords
             if len(non_empty_values) >= 5:  # Real headers should have multiple columns
                 row_text = ' '.join(non_empty_values).lower()
@@ -719,9 +768,15 @@ class ExcelService:
                 # Give extra weight to specific critical keywords
                 if 'l2' in row_text and ('id' in row_text or '编号' in row_text):
                     matches += 3  # L2 ID is a critical field
+                if 'l2id' in row_text.replace(' ', '').lower():
+                    matches += 3  # L2ID without space
                 if '应用' in row_text or 'application' in row_text.lower():
                     matches += 2
                 if '负责' in row_text or '团队' in row_text:
+                    matches += 2
+                if '【计划】' in row_text or '【实际】' in row_text:
+                    matches += 3  # Strong indicator of header row
+                if '监管' in row_text and '验收' in row_text:
                     matches += 2
 
                 # Calculate score based on matches and non-empty cells
@@ -779,9 +834,28 @@ class ExcelService:
         column_mapping = {}
         unmapped_headers = []
         for i, header in enumerate(headers):
+            # Clean header - remove extra spaces and newlines
+            header_cleaned = header.strip().replace('\n', ' ').replace('  ', ' ')
+
+            # Try exact match first
             if header in field_mapping:
                 column_mapping[i] = field_mapping[header]
-                print(f"DEBUG: [MAPPED] header '{header}' -> '{field_mapping[header]}'")  # 调试信息
+                print(f"DEBUG: [MAPPED EXACT] column {i}: '{header}' -> '{field_mapping[header]}'")  # 调试信息
+            # Try cleaned version
+            elif header_cleaned in field_mapping:
+                column_mapping[i] = field_mapping[header_cleaned]
+                print(f"DEBUG: [MAPPED CLEANED] column {i}: '{header}' (cleaned: '{header_cleaned}') -> '{field_mapping[header_cleaned]}'")
+            # Special handling for headers with 【】markers which might have different formatting
+            elif '【' in header:
+                # Try removing all spaces around 【】
+                header_normalized = header.replace(' ', '').replace('\n', '')
+                for key in field_mapping:
+                    if '【' in key and key.replace(' ', '').replace('\n', '') == header_normalized:
+                        column_mapping[i] = field_mapping[key]
+                        print(f"DEBUG: [MAPPED NORMALIZED] column {i}: '{header}' -> '{field_mapping[key]}'")
+                        break
+                else:
+                    unmapped_headers.append(header)
             else:
                 unmapped_headers.append(header)
 
@@ -944,6 +1018,25 @@ class ExcelService:
         # Convert to DataFrame and optimize memory usage
         if data:
             df = pd.DataFrame(data)
+
+            # Enhanced debugging to see what's in the DataFrame
+            print(f"DEBUG: DataFrame columns after mapping: {list(df.columns)}")
+            print(f"DEBUG: DataFrame shape: {df.shape}")
+            if len(df) > 0:
+                print(f"DEBUG: First row data sample:")
+                for col in df.columns:
+                    if col in ['l2_id', 'app_name', 'dev_team', 'overall_transformation_target', 'current_status']:
+                        print(f"  {col}: {df.iloc[0].get(col, 'N/A')}")
+
+                # Check specifically for app_name column
+                if 'app_name' in df.columns:
+                    non_empty_app_names = df[df['app_name'].notna() & (df['app_name'] != '')]
+                    print(f"DEBUG: Found {len(non_empty_app_names)} rows with non-empty app_name values")
+                    if len(non_empty_app_names) > 0:
+                        print(f"DEBUG: Sample app_names: {list(non_empty_app_names['app_name'].head(3))}")
+                else:
+                    print(f"DEBUG: WARNING - app_name column not found in DataFrame!")
+
             # Optimize memory for large dataframes
             for col in df.columns:
                 col_type = df[col].dtype
