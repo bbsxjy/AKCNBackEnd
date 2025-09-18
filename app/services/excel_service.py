@@ -17,6 +17,7 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.utils import get_column_letter
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
+from sqlalchemy.orm import selectinload
 
 from app.models.application import Application, ApplicationStatus, TransformationTarget
 from app.models.subtask import SubTask, SubTaskStatus
@@ -1229,8 +1230,11 @@ class ExcelService:
                 l2_id = row.get('l2_id')
 
                 # Check if application exists
+                # Use selectinload to prevent lazy loading issues in async context
                 existing = await db.execute(
-                    select(Application).where(Application.l2_id == l2_id)
+                    select(Application)
+                    .options(selectinload(Application.creator), selectinload(Application.updater))
+                    .where(Application.l2_id == l2_id)
                 )
                 existing_app = existing.scalar_one_or_none()
 
@@ -1297,8 +1301,9 @@ class ExcelService:
                     db.add(new_app)
                     imported += 1
 
-                # 每处理一行就提交一次，避免批量rollback
-                await db.commit()
+                # Commit every 10 rows to balance performance and safety
+                if (imported + updated) % 10 == 0:
+                    await db.commit()
 
             except Exception as e:
                 print(f"Error importing row {index + 2}: {e}")
@@ -1306,6 +1311,9 @@ class ExcelService:
                 await db.rollback()
                 skipped += 1
                 continue
+
+        # Final commit for any remaining rows
+        await db.commit()
 
         # Log final statistics
         print(f"DEBUG: Import completed - Imported: {imported}, Updated: {updated}, Skipped: {skipped}")
@@ -1369,8 +1377,11 @@ class ExcelService:
                     print(f"DEBUG: Created placeholder application with ID {application_id} for L2 ID '{app_l2_id}'")
 
                 # Check if subtask exists (based on l2_id and sub_target)
+                # Use selectinload to prevent lazy loading issues in async context
                 existing = await db.execute(
-                    select(SubTask).where(
+                    select(SubTask)
+                    .options(selectinload(SubTask.creator), selectinload(SubTask.updater))
+                    .where(
                         and_(
                             SubTask.l2_id == application_id,  # l2_id now stores the application ID
                             SubTask.sub_target == row.get('sub_target')
@@ -1434,8 +1445,9 @@ class ExcelService:
                     db.add(new_subtask)
                     imported += 1
 
-                # 每处理一行就提交一次，避免批量rollback
-                await db.commit()
+                # Commit every 10 rows to balance performance and safety
+                if (imported + updated) % 10 == 0:
+                    await db.commit()
 
             except Exception as e:
                 print(f"Error importing subtask row {index + 2}: {e}")
@@ -1443,6 +1455,9 @@ class ExcelService:
                 await db.rollback()
                 skipped += 1
                 continue
+
+        # Final commit for any remaining rows
+        await db.commit()
 
         # Log final statistics
         print(f"DEBUG: Import completed - Imported: {imported}, Updated: {updated}, Skipped: {skipped}")
