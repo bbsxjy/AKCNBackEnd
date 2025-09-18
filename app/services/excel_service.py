@@ -1221,7 +1221,7 @@ class ExcelService:
                 # User explicitly requested: "对于导入的数据，请不要在原数据前加前缀"
                 df.at[index, 'l2_id'] = l2_id_str
 
-            # Validate supervision year
+            # Convert supervision year if it's a string
             year = row.get('ak_supervision_acceptance_year')
             if year:
                 # Convert if it's a string like "2025年"
@@ -1231,15 +1231,8 @@ class ExcelService:
                     if year_match:
                         year = int(year_match.group(1))
                         df.at[index, 'ak_supervision_acceptance_year'] = year
-
-                # Now validate the numeric year
-                if isinstance(year, (int, float)) and (year < 2020 or year > 2030):
-                    errors.append({
-                        'row': row_num,
-                        'column': '监管年',
-                        'message': '监管年必须在2020-2030之间',
-                        'value': year
-                    })
+                # Note: Removed year range validation as per user request
+                # Years can be any valid value
 
             # Validate transformation target (支持前端发送的值)
             target = row.get('overall_transformation_target')
