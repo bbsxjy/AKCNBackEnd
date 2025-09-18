@@ -252,21 +252,50 @@ class ExcelMappingConfig:
 
     # SubTask field mappings (支持前端发送的英文字段名)
     SUBTASK_FIELDS = {
-        # 前端发送的英文字段名 (常见变体) - all map to 'l2_id' for consistency
-        'application_l2_id': 'l2_id',  # Map to l2_id for consistency
+        # 用户指定的精确中文列名映射 (子追踪表)
+        'L2ID': 'l2_id',
+        'L2应用': 'app_name',
+        '子目标': 'sub_target',
+        '版本名': 'version_name',
+        '改造状态': 'task_status',
+        '【计划】\n需求完成时间': 'planned_requirement_date',
+        '【计划】需求完成时间': 'planned_requirement_date',  # 无换行版本
+        '【计划】\n发版时间': 'planned_release_date',
+        '【计划】发版时间': 'planned_release_date',  # 无换行版本
+        '【计划】\n技术上线时间': 'planned_tech_online_date',
+        '【计划】技术上线时间': 'planned_tech_online_date',  # 无换行版本
+        '【计划】\n业务上线时间': 'planned_biz_online_date',
+        '【计划】业务上线时间': 'planned_biz_online_date',  # 无换行版本
+        '【实际】\n需求到达时间': 'actual_requirement_date',
+        '【实际】需求到达时间': 'actual_requirement_date',  # 无换行版本
+        '【实际】\n发版时间': 'actual_release_date',
+        '【实际】发版时间': 'actual_release_date',  # 无换行版本
+        '【实际】\n技术上线时间': 'actual_tech_online_date',
+        '【实际】技术上线时间': 'actual_tech_online_date',  # 无换行版本
+        '【实际】\n业务上线时间': 'actual_biz_online_date',
+        '【实际】业务上线时间': 'actual_biz_online_date',  # 无换行版本
+        '备注': 'notes',
+        '资源是否申请': 'resource_applied',
+        '运营需求提交': 'ops_requirement_submitted',
+        '运营测试': 'ops_testing_status',
+        '上线检查': 'launch_check_status',
+
+        # 前端发送的英文字段名 (保留英文支持)
+        'application_l2_id': 'l2_id',
         'app_l2_id': 'l2_id',
         'l2_id': 'l2_id',
+        'app_name': 'app_name',
         'sub_target': 'sub_target',
-        'target': 'sub_target',            # 简化版本
-        'transformation_target': 'sub_target',  # 完整版本
+        'target': 'sub_target',
+        'transformation_target': 'sub_target',
         'version_name': 'version_name',
-        'version': 'version_name',         # 简化版本
+        'version': 'version_name',
         'task_status': 'task_status',
-        'status': 'task_status',           # 简化版本
+        'status': 'task_status',
         'progress_percentage': 'progress_percentage',
-        'progress': 'progress_percentage', # 简化版本
+        'progress': 'progress_percentage',
         'is_blocked': 'is_blocked',
-        'blocked': 'is_blocked',           # 简化版本
+        'blocked': 'is_blocked',
         'block_reason': 'block_reason',
         'planned_requirement_date': 'planned_requirement_date',
         'planned_release_date': 'planned_release_date',
@@ -276,28 +305,26 @@ class ExcelMappingConfig:
         'actual_release_date': 'actual_release_date',
         'actual_tech_online_date': 'actual_tech_online_date',
         'actual_biz_online_date': 'actual_biz_online_date',
-        # Notes field mapping
         'notes': 'notes',
-        'remarks': 'notes',      # 别名
-        'description': 'notes',  # 别名
-        'technical_notes': 'notes',  # Backward compatibility
+        'remarks': 'notes',
+        'description': 'notes',
+        'technical_notes': 'notes',
 
-        # New fields
+        # New fields (英文支持)
         'resource_applied': 'resource_applied',
         'ops_requirement_submitted': 'ops_requirement_submitted',
         'ops_testing_status': 'ops_testing_status',
         'launch_check_status': 'launch_check_status',
 
-        # 保留中文字段名兼容性（完整支持所有中文列名）
-        'L2ID': 'l2_id',        # Excel中的简化版本
-        'L2 ID': 'l2_id',       # Excel中的空格版本
-        '应用L2 ID': 'l2_id',   # 完整版本
-        '子目标': 'sub_target',
-        '版本名': 'version_name',           # 简化版本
-        '版本名称': 'version_name',         # 完整版本
-        '改造状态': 'task_status',          # Excel中的改造状态
-        '任务状态': 'task_status',          # 标准任务状态
-        '子任务完成': 'task_status',        # 子任务状态的另一种表述
+        # 保留其他可能的中文变体（作为备用）
+        'L2 ID': 'l2_id',
+        '应用L2 ID': 'l2_id',
+        '应用名称': 'app_name',
+        '应用名': 'app_name',
+        'L2应用名': 'app_name',
+        '版本名称': 'version_name',
+        '任务状态': 'task_status',
+        '子任务完成': 'task_status',
         '进度百分比': 'progress_percentage',
         '是否阻塞': 'is_blocked',
         '阻塞原因': 'block_reason',
@@ -309,29 +336,15 @@ class ExcelMappingConfig:
         '实际发布日期': 'actual_release_date',
         '实际技术上线日期': 'actual_tech_online_date',
         '实际业务上线日期': 'actual_biz_online_date',
-        # 带【】标记的日期字段
-        '【计划】\n需求完成时间': 'planned_requirement_date',
-        '【实际】\n需求到达时间': 'actual_requirement_date',
-        '【计划】\n发版时间': 'planned_release_date',
-        '【实际】\n发版时间': 'actual_release_date',
-        '【计划】\n技术上线时间': 'planned_tech_online_date',
-        '【实际】\n技术上线时间': 'actual_tech_online_date',
-        '【计划】\n业务上线时间': 'planned_biz_online_date',
-        '【实际】\n业务上线时间': 'actual_biz_online_date',
-        # 其他字段
-        '备注': 'notes',
         '子表备注': 'notes',
         '主表同步备注': 'notes',
 
-        # New fields Chinese mappings
+        # Other field variants
         '资源已申请': 'resource_applied',
-        '资源是否申请': 'resource_applied',
         '运维需求提交时间': 'ops_requirement_submitted',
-        '运营需求提交': 'ops_requirement_submitted',
         '运维测试状态': 'ops_testing_status',
-        '运营测试': 'ops_testing_status',
-        '上线检查状态': 'launch_check_status',
-        '上线检查': 'launch_check_status'
+        '运营测试状态': 'ops_testing_status',
+        '上线检查状态': 'launch_check_status'
     }
 
     # Required fields (调整为更宽松的验证，适配前端数据)
