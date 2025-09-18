@@ -8,7 +8,7 @@ with template-based imports, bulk data validation, and error reporting.
 import io
 import json
 from typing import List, Dict, Any, Optional, Union, Tuple
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from pathlib import Path
 import pandas as pd
 from openpyxl import Workbook, load_workbook
@@ -963,12 +963,57 @@ class ExcelService:
             return None
 
         try:
+            # DateTime fields (timestamp fields)
+            if field_name in self.config.DATETIME_FIELDS:
+                if isinstance(value, datetime):
+                    return value
+                elif isinstance(value, date):
+                    # Convert date to datetime at midnight
+                    return datetime.combine(value, datetime.min.time())
+                elif isinstance(value, (int, float)):
+                    # Handle Excel numeric date format
+                    import math
+                    if math.isnan(value):
+                        return None
+                    try:
+                        # Excel stores dates as days since 1900-01-01
+                        excel_base_date = datetime(1899, 12, 30)
+                        return excel_base_date + timedelta(days=int(value))
+                    except (ValueError, OverflowError):
+                        return None
+                elif isinstance(value, str):
+                    # For DateTime fields, if it's a status string like '已完成', return None
+                    # These strings should be mapped to other fields
+                    status_strings = ['已完成', '通过', '检查通过', '未完成', '进行中', '待检查']
+                    if value.strip() in status_strings:
+                        return None
+                    # Try to parse datetime string
+                    for fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d', '%Y/%m/%d %H:%M:%S', '%Y/%m/%d']:
+                        try:
+                            return datetime.strptime(value.strip(), fmt)
+                        except ValueError:
+                            continue
+                    return None
+
             # Date fields
-            if field_name in self.config.DATE_FIELDS:
+            elif field_name in self.config.DATE_FIELDS:
                 if isinstance(value, datetime):
                     return value.date()
                 elif isinstance(value, date):
                     return value
+                elif isinstance(value, (int, float)):
+                    # Handle Excel numeric date format
+                    import math
+                    if math.isnan(value):
+                        return None
+                    try:
+                        # Excel stores dates as days since 1900-01-01 (with a leap year bug)
+                        # For dates after 1900-03-01, we need to subtract 2
+                        # (1 for the bug, 1 for 0-indexing)
+                        excel_base_date = datetime(1899, 12, 30)  # Excel's base date accounting for the bug
+                        return (excel_base_date + timedelta(days=int(value))).date()
+                    except (ValueError, OverflowError):
+                        return None
                 elif isinstance(value, str):
                     # Try to parse date string
                     for fmt in ['%Y-%m-%d', '%Y/%m/%d', '%m/%d/%Y', '%d/%m/%Y']:
@@ -1458,12 +1503,20 @@ class ExcelService:
                                 'progress_percentage', 'is_blocked', 'block_reason',
                                 'planned_requirement_date', 'planned_release_date', 'planned_tech_online_date', 'planned_biz_online_date',
                                 'actual_requirement_date', 'actual_release_date', 'actual_tech_online_date', 'actual_biz_online_date',
-                                'notes', 'resource_applied', 'ops_requirement_submitted', 'ops_testing_status', 'launch_check_status'
+                                'notes', 'resource_applied', 'ops_testing_status', 'launch_check_status'
+                                # Removed ops_requirement_submitted from here since it's a DateTime field that needs special handling
                             }
 
                             for field, value in row.items():
                                 if field in subtask_model_fields and value is not None and value != '' and hasattr(existing_subtask, field):
                                     setattr(existing_subtask, field, value)
+
+                            # Handle ops_requirement_submitted separately - it's a DateTime field
+                            if 'ops_requirement_submitted' in row and hasattr(existing_subtask, 'ops_requirement_submitted'):
+                                ops_req_value = row['ops_requirement_submitted']
+                                if ops_req_value and not isinstance(ops_req_value, str):
+                                    # Only set if it's a valid date/datetime value, not a string like '已完成'
+                                    setattr(existing_subtask, 'ops_requirement_submitted', ops_req_value)
 
                             existing_subtask.updated_by = user_id
                             updated_subtasks.append(existing_subtask)
@@ -1477,12 +1530,21 @@ class ExcelService:
                         'progress_percentage', 'is_blocked', 'block_reason',
                         'planned_requirement_date', 'planned_release_date', 'planned_tech_online_date', 'planned_biz_online_date',
                         'actual_requirement_date', 'actual_release_date', 'actual_tech_online_date', 'actual_biz_online_date',
-                        'notes', 'resource_applied', 'ops_requirement_submitted', 'ops_testing_status', 'launch_check_status'
+                        'notes', 'resource_applied', 'ops_testing_status', 'launch_check_status'
+                        # Removed ops_requirement_submitted from here since it's a DateTime field that needs special handling
                     }
 
                     for k, v in row.items():
                         if k in subtask_model_fields and v is not None and v != '':
                             subtask_data[k] = v
+
+                    # Handle ops_requirement_submitted separately - it's a DateTime field
+                    if 'ops_requirement_submitted' in row:
+                        ops_req_value = row['ops_requirement_submitted']
+                        if ops_req_value and not isinstance(ops_req_value, str):
+                            # Only set if it's a valid date/datetime value, not a string like '已完成'
+                            subtask_data['ops_requirement_submitted'] = ops_req_value
+                        # If it's a string like '已完成', we ignore it as it's likely mismatched column data
 
                     # Store the app_l2_id for later resolution
                     subtask_data['_app_l2_id'] = app_l2_id  # Temporary field to track which app this belongs to

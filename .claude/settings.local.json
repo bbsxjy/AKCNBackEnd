@@ -26,7 +26,12 @@
       "Bash(git reset:*)",
       "Bash(del nul)",
       "Bash(del test_excel_import.py)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Read(//d/Program Files (x86)/CodeRepos/AKCNProjectManagement/AKCNFrontEnd/**)",
+      "Read(//d/Program Files (x86)/CodeRepos/AKCNProjectManagement/AKCNFrontEnd/src/types/**)",
+      "Read(//d/Program Files (x86)/CodeRepos/AKCNProjectManagement/AKCNFrontEnd/src/api/**)",
+      "Read(//d/Program Files (x86)/CodeRepos/AKCNProjectManagement/AKCNFrontEnd/src/utils/**)",
+      "Read(//d/Program Files (x86)/CodeRepos/AKCNProjectManagement/AKCNFrontEnd/src/views/**)"
     ],
     "deny": [],
     "ask": []
