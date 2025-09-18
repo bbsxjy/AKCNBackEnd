@@ -767,16 +767,16 @@ class ExcelService:
         for i, header in enumerate(headers):
             if header in field_mapping:
                 column_mapping[i] = field_mapping[header]
-                print(f"DEBUG: ✓ Mapped header '{header}' -> '{field_mapping[header]}'")  # 调试信息
+                print(f"DEBUG: [MAPPED] header '{header}' -> '{field_mapping[header]}'")  # 调试信息
             else:
                 unmapped_headers.append(header)
 
         print(f"DEBUG: Column mapping: {column_mapping}")  # 调试信息
-        print(f"DEBUG: ⚠️ Unmapped headers: {unmapped_headers}")  # 显示未映射的标题
+        print(f"DEBUG: [UNMAPPED] headers: {unmapped_headers}")  # 显示未映射的标题
 
         # 如果没有映射到任何列，尝试智能推断
         if not column_mapping:
-            print("DEBUG: 🔍 No direct column mapping found, trying intelligent matching...")
+            print("DEBUG: [INFO] No direct column mapping found, trying intelligent matching...")
 
             # 尝试模糊匹配常见的字段名（支持Applications和SubTasks）
             fuzzy_mapping = {
@@ -832,7 +832,7 @@ class ExcelService:
                 for pattern, field in fuzzy_mapping.items():
                     if pattern in header_lower:
                         column_mapping[i] = field
-                        print(f"DEBUG: 🎯 Fuzzy matched '{header}' -> '{field}' (pattern: '{pattern}')")
+                        print(f"DEBUG: [FUZZY] matched '{header}' -> '{field}' (pattern: '{pattern}')")
                         break
 
         # Extract data rows with smart termination and chunked processing
@@ -1098,7 +1098,7 @@ class ExcelService:
         if valid_l2_ids:
             print(f"DEBUG: Sample L2 IDs: {sorted(list(valid_l2_ids))[:10]}")
         else:
-            print(f"DEBUG: ⚠️ No applications found in database! This will cause all validations to fail.")
+            print(f"DEBUG: [WARNING] No applications found in database! This will cause all validations to fail.")
 
         # Also check all L2 IDs in the DataFrame to see what we're trying to match
         df_l2_ids = df['application_l2_id'].dropna().unique() if 'application_l2_id' in df.columns else []
@@ -1138,11 +1138,11 @@ class ExcelService:
 
                 # 检查应用是否存在（如果不存在，import时会自动创建）
                 if app_l2_id not in valid_l2_ids:
-                    print(f"DEBUG: ⚠️ L2 ID '{app_l2_id}' not found in database, will be auto-created during import")
+                    print(f"DEBUG: [WARNING] L2 ID '{app_l2_id}' not found in database, will be auto-created during import")
                 else:
-                    print(f"DEBUG: ✓ L2 ID '{app_l2_id}' found in database")
+                    print(f"DEBUG: [FOUND] L2 ID '{app_l2_id}' in database")
             else:
-                print(f"DEBUG: ⚠️ No L2 ID provided for row {row_num}")
+                print(f"DEBUG: [WARNING] No L2 ID provided for row {row_num}")
 
             # Validate and normalize sub_target (支持前端发送的值)
             sub_target = row.get('sub_target')
@@ -1385,6 +1385,7 @@ class ExcelService:
                                 'current_transformation_phase': '待启动',
                                 'dev_team': '待分配',
                                 'dev_owner': '待分配',
+                                'ak_supervision_acceptance_year': 2024,  # Add required field with default value
                                 'created_by': user_id,  # Use integer directly
                                 'updated_by': user_id   # Use integer directly
                             }
