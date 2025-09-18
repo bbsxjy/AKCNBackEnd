@@ -1497,6 +1497,9 @@ class ExcelService:
 
                         for field, value in row.items():
                             if field in application_model_fields and value is not None and value != '' and hasattr(existing_app, field):
+                                # Handle NaN values
+                                if pd.isna(value):
+                                    continue  # Skip NaN values
                                 setattr(existing_app, field, value)
 
                         existing_app.updated_by = user_id
@@ -1519,6 +1522,9 @@ class ExcelService:
 
                         for k, v in row.items():
                             if k in application_model_fields and v is not None and v != '':
+                                # Handle NaN values
+                                if pd.isna(v):
+                                    continue  # Skip NaN values
                                 app_data[k] = v
 
                         app_data['created_by'] = user_id
