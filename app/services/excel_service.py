@@ -400,6 +400,9 @@ class ExcelService:
 
             # Validate data
             validation_errors = await self._validate_applications_data(db, df)
+            print(f"DEBUG: Validation errors count: {len(validation_errors)}")
+            if validation_errors:
+                print(f"DEBUG: First few validation errors: {validation_errors[:3]}")
 
             if validation_errors and not validate_only:
                 return {
@@ -1134,7 +1137,29 @@ class ExcelService:
                 if isinstance(value, (int, float)):
                     return int(value)
                 elif isinstance(value, str):
-                    return int(float(value.strip()))
+                    # Special handling for certain fields
+                    if field_name == 'ak_supervision_acceptance_year':
+                        # Extract year from strings like "2025年"
+                        import re
+                        year_match = re.search(r'(\d{4})', value)
+                        if year_match:
+                            return int(year_match.group(1))
+                    elif field_name == 'app_tier':
+                        # Convert tier strings to numbers
+                        tier_mapping = {
+                            '第一级': 1, '第1级': 1, '一级': 1, '1级': 1,
+                            '第二级': 2, '第2级': 2, '二级': 2, '2级': 2,
+                            '第三级': 3, '第3级': 3, '三级': 3, '3级': 3,
+                            '第四级': 4, '第4级': 4, '四级': 4, '4级': 4,
+                            '第五级': 5, '第5级': 5, '五级': 5, '5级': 5
+                        }
+                        if value.strip() in tier_mapping:
+                            return tier_mapping[value.strip()]
+                    # Try standard conversion
+                    try:
+                        return int(float(value.strip()))
+                    except:
+                        return None
 
             # Boolean fields
             elif field_name in self.config.BOOLEAN_FIELDS:
@@ -1183,13 +1208,23 @@ class ExcelService:
 
             # Validate supervision year
             year = row.get('ak_supervision_acceptance_year')
-            if year and (year < 2020 or year > 2030):
-                errors.append({
-                    'row': row_num,
-                    'column': '监管年',
-                    'message': '监管年必须在2020-2030之间',
-                    'value': year
-                })
+            if year:
+                # Convert if it's a string like "2025年"
+                if isinstance(year, str):
+                    import re
+                    year_match = re.search(r'(\d{4})', year)
+                    if year_match:
+                        year = int(year_match.group(1))
+                        df.at[index, 'ak_supervision_acceptance_year'] = year
+
+                # Now validate the numeric year
+                if isinstance(year, (int, float)) and (year < 2020 or year > 2030):
+                    errors.append({
+                        'row': row_num,
+                        'column': '监管年',
+                        'message': '监管年必须在2020-2030之间',
+                        'value': year
+                    })
 
             # Validate transformation target (支持前端发送的值)
             target = row.get('overall_transformation_target')
@@ -1226,6 +1261,19 @@ class ExcelService:
                 elif status not in [s.value for s in ApplicationStatus]:
                     # 如果不匹配，使用默认值
                     df.at[index, 'current_status'] = '研发进行中'
+
+            # Convert app_tier if it's a string
+            app_tier = row.get('app_tier')
+            if app_tier and isinstance(app_tier, str):
+                tier_mapping = {
+                    '第一级': 1, '第1级': 1, '一级': 1, '1级': 1,
+                    '第二级': 2, '第2级': 2, '二级': 2, '2级': 2,
+                    '第三级': 3, '第3级': 3, '三级': 3, '3级': 3,
+                    '第四级': 4, '第4级': 4, '四级': 4, '4级': 4,
+                    '第五级': 5, '第5级': 5, '五级': 5, '5级': 5
+                }
+                if app_tier.strip() in tier_mapping:
+                    df.at[index, 'app_tier'] = tier_mapping[app_tier.strip()]
 
             # Validate progress percentage
             progress = row.get('progress_percentage')
