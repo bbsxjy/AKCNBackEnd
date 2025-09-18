@@ -427,6 +427,9 @@ class ExcelService:
             app_results = {'imported': 0, 'updated': 0, 'skipped': 0}
             subtask_results = {'imported': 0, 'updated': 0, 'skipped': 0}
 
+            # Initialize DataFrames
+            app_df = pd.DataFrame()
+
             # Import applications first if both sheets exist
             if has_applications_sheet:
                 app_sheet_name = self._find_applications_sheet(workbook)
@@ -440,6 +443,8 @@ class ExcelService:
 
                     if not validate_only and len(app_validation_errors) == 0:
                         app_results = await self._import_applications_data(db, app_df, user)
+                else:
+                    print(f"DEBUG: No application data found in worksheet {app_sheet_name}")
 
             # Import subtasks
             if has_subtasks_sheet:
@@ -466,6 +471,14 @@ class ExcelService:
                     subtask_results = await self._import_subtasks_data(db, subtask_df, user)
             else:
                 print(f"DEBUG: No subtask data found in worksheet")
+                # If no data was found and no application data either, this is an error
+                if total_app_rows == 0:
+                    return {
+                        'success': False,
+                        'error': 'No recognizable data found in Excel file. Please check column headers match expected format.',
+                        'total_rows': 0,
+                        'processed_rows': 0
+                    }
 
             total_rows = total_app_rows + total_subtask_rows
 
@@ -668,7 +681,8 @@ class ExcelService:
             'L2', 'ID', '应用', '名称', '模块', '状态', '进度', '负责', '日期', '备注',
             'application', 'module', 'status', 'progress', 'date', 'team', 'person',
             '版本', '目标', '阶段', '团队', '百分比', 'name', 'target', '序号',
-            '系统', '监管', '改造', '开发', '上线', '发布', '需求'
+            '系统', '监管', '改造', '开发', '上线', '发布', '需求',
+            'l2_id', 'app_name', 'sub_target', 'version_name', 'task_status'  # Add English field names
         ]
 
         # Keywords that indicate statistics/summary rows (should be skipped)
@@ -773,6 +787,10 @@ class ExcelService:
 
         print(f"DEBUG: Column mapping: {column_mapping}")  # 调试信息
         print(f"DEBUG: [UNMAPPED] headers: {unmapped_headers}")  # 显示未映射的标题
+
+        # Check if we have at least the minimum required mappings
+        if 'l2_id' not in column_mapping.values() and 'application_l2_id' not in column_mapping.values():
+            print("DEBUG: [WARNING] No L2 ID column found in Excel file")
 
         # 如果没有映射到任何列，尝试智能推断
         if not column_mapping:
