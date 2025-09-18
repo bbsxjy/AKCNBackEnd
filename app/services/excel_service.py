@@ -360,13 +360,21 @@ class ExcelMappingConfig:
     DATETIME_FIELDS = ['ops_requirement_submitted']  # Timestamp fields
 
     INTEGER_FIELDS = [
-        'ak_supervision_acceptance_year', 'app_tier', 'progress_percentage', 'delay_days', 'l2_id'
+        'ak_supervision_acceptance_year', 'app_tier', 'progress_percentage', 'delay_days'
     ]
 
     BOOLEAN_FIELDS = [
         'is_blocked', 'is_ak_completed', 'is_cloud_native_completed',
         'is_domain_transformation_completed', 'is_dbpm_transformation_completed',
         'is_delayed', 'resource_applied'
+    ]
+
+    STRING_FIELDS = [
+        'l2_id', 'app_name', 'dev_team', 'ops_team', 'dev_owner', 'ops_owner',
+        'belonging_l1_name', 'belonging_projects', 'dev_mode', 'ops_mode',
+        'belonging_kpi', 'acceptance_status', 'notes', 'current_status',
+        'overall_transformation_target', 'current_transformation_phase',
+        'sub_target', 'version_name', 'task_status', 'block_reason'
     ]
 
 
@@ -1144,6 +1152,9 @@ class ExcelService:
                         year_match = re.search(r'(\d{4})', value)
                         if year_match:
                             return int(year_match.group(1))
+                    elif field_name == 'l2_id':
+                        # L2 ID should be treated as string
+                        return value.strip()
                     elif field_name == 'app_tier':
                         # Convert tier strings to numbers
                         tier_mapping = {
@@ -1171,7 +1182,11 @@ class ExcelService:
                 elif isinstance(value, (int, float)):
                     return bool(value)
 
-            # String fields
+            # String fields (explicitly handle known string fields)
+            elif field_name in self.config.STRING_FIELDS:
+                return str(value).strip() if value else None
+
+            # Default handling for other fields
             else:
                 return str(value).strip() if value else None
 
