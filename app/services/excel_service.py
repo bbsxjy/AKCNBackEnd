@@ -1000,7 +1000,7 @@ class ExcelService:
                 df.at[index, 'l2_id'] = l2_id_str
 
             # Validate supervision year
-            year = row.get('supervision_year')
+            year = row.get('ak_supervision_acceptance_year')
             if year and (year < 2020 or year > 2030):
                 errors.append({
                     'row': row_num,
@@ -1010,7 +1010,7 @@ class ExcelService:
                 })
 
             # Validate transformation target (支持前端发送的值)
-            target = row.get('transformation_target')
+            target = row.get('overall_transformation_target')
             if target:
                 # 标准化转型目标值
                 target_mapping = {
@@ -1022,13 +1022,13 @@ class ExcelService:
                 }
 
                 if target in target_mapping:
-                    df.at[index, 'transformation_target'] = target_mapping[target]
+                    df.at[index, 'overall_transformation_target'] = target_mapping[target]
                 elif target not in [t.value for t in TransformationTarget]:
                     # 如果不匹配，使用默认值
-                    df.at[index, 'transformation_target'] = TransformationTarget.AK.value
+                    df.at[index, 'overall_transformation_target'] = TransformationTarget.AK.value
 
             # Validate status (支持前端发送的值)
-            status = row.get('overall_status')
+            status = row.get('current_status')
             if status:
                 # 标准化状态值
                 status_mapping = {
@@ -1040,10 +1040,10 @@ class ExcelService:
                 }
 
                 if status in status_mapping:
-                    df.at[index, 'overall_status'] = status_mapping[status]
+                    df.at[index, 'current_status'] = status_mapping[status]
                 elif status not in [s.value for s in ApplicationStatus]:
                     # 如果不匹配，使用默认值
-                    df.at[index, 'overall_status'] = '研发进行中'
+                    df.at[index, 'current_status'] = '研发进行中'
 
             # Validate progress percentage
             progress = row.get('progress_percentage')
@@ -1102,7 +1102,7 @@ class ExcelService:
                 print(f"DEBUG: Row {row_num} data: {dict(row)}")
 
             # Check if L2 ID is empty - if so, skip this row entirely
-            app_l2_id = row.get('application_l2_id')
+            app_l2_id = row.get('l2_id')  # Now using l2_id field
             if pd.isna(app_l2_id) or app_l2_id == '' or app_l2_id is None:
                 empty_l2_count += 1
                 rows_to_skip.append(row_num)
@@ -1120,7 +1120,7 @@ class ExcelService:
 
                 # Keep the original L2 ID without adding prefix
                 # User explicitly requested: "对于导入的数据，请不要在原数据前加前缀"
-                df.at[index, 'application_l2_id'] = app_l2_id_str
+                df.at[index, 'l2_id'] = app_l2_id_str
                 app_l2_id = app_l2_id_str
 
                 # 检查应用是否存在（如果不存在，import时会自动创建）
@@ -1224,9 +1224,12 @@ class ExcelService:
                 if existing_app:
                     # Update existing application (只更新Application模型支持的字段)
                     application_model_fields = {
-                        'l2_id', 'app_name', 'supervision_year', 'transformation_target',
-                        'current_stage', 'overall_status', 'responsible_team', 'responsible_person',
-                        'progress_percentage', 'planned_requirement_date', 'planned_release_date',
+                        'l2_id', 'app_name', 'ak_supervision_acceptance_year', 'overall_transformation_target',
+                        'current_transformation_phase', 'current_status', 'app_tier', 'belonging_l1_name',
+                        'belonging_projects', 'is_ak_completed', 'is_cloud_native_completed',
+                        'is_domain_transformation_completed', 'is_dbpm_transformation_completed',
+                        'dev_mode', 'ops_mode', 'dev_owner', 'dev_team', 'ops_owner', 'ops_team',
+                        'belonging_kpi', 'acceptance_status', 'planned_requirement_date', 'planned_release_date',
                         'planned_tech_online_date', 'planned_biz_online_date', 'actual_requirement_date',
                         'actual_release_date', 'actual_tech_online_date', 'actual_biz_online_date',
                         'is_delayed', 'delay_days', 'notes'
@@ -1243,9 +1246,12 @@ class ExcelService:
                     # Create new application (只包含Application模型支持的字段)
                     app_data = {}
                     application_model_fields = {
-                        'l2_id', 'app_name', 'supervision_year', 'transformation_target',
-                        'current_stage', 'overall_status', 'responsible_team', 'responsible_person',
-                        'progress_percentage', 'planned_requirement_date', 'planned_release_date',
+                        'l2_id', 'app_name', 'ak_supervision_acceptance_year', 'overall_transformation_target',
+                        'current_transformation_phase', 'current_status', 'app_tier', 'belonging_l1_name',
+                        'belonging_projects', 'is_ak_completed', 'is_cloud_native_completed',
+                        'is_domain_transformation_completed', 'is_dbpm_transformation_completed',
+                        'dev_mode', 'ops_mode', 'dev_owner', 'dev_team', 'ops_owner', 'ops_team',
+                        'belonging_kpi', 'acceptance_status', 'planned_requirement_date', 'planned_release_date',
                         'planned_tech_online_date', 'planned_biz_online_date', 'actual_requirement_date',
                         'actual_release_date', 'actual_tech_online_date', 'actual_biz_online_date',
                         'is_delayed', 'delay_days', 'notes'
@@ -1262,15 +1268,17 @@ class ExcelService:
                         app_data['updated_by'] = user.id
 
                     # 确保必需字段有默认值
-                    if 'responsible_team' not in app_data or not app_data['responsible_team']:
-                        app_data['responsible_team'] = '待分配'
+                    if 'dev_team' not in app_data or not app_data['dev_team']:
+                        app_data['dev_team'] = '待分配'
                     if 'app_name' not in app_data or not app_data['app_name']:
                         # Keep app_name empty if not provided - don't use l2_id
                         app_data['app_name'] = '未命名应用'
-                    if 'supervision_year' not in app_data or not app_data['supervision_year']:
-                        app_data['supervision_year'] = 2024
-                    if 'transformation_target' not in app_data or not app_data['transformation_target']:
-                        app_data['transformation_target'] = 'AK'
+                    if 'ak_supervision_acceptance_year' not in app_data or not app_data['ak_supervision_acceptance_year']:
+                        app_data['ak_supervision_acceptance_year'] = 2024
+                    if 'overall_transformation_target' not in app_data or not app_data['overall_transformation_target']:
+                        app_data['overall_transformation_target'] = 'AK'
+                    if 'current_status' not in app_data or not app_data['current_status']:
+                        app_data['current_status'] = '待启动'
 
                     new_app = Application(**app_data)
                     db.add(new_app)
@@ -1311,7 +1319,7 @@ class ExcelService:
 
         for index, row in df.iterrows():
             try:
-                app_l2_id = row.get('application_l2_id')
+                app_l2_id = row.get('l2_id')  # Now looking for l2_id field in Excel
 
                 # Skip rows with empty L2 ID
                 if pd.isna(app_l2_id) or app_l2_id == '' or app_l2_id is None:
@@ -1330,12 +1338,11 @@ class ExcelService:
                     new_app_data = {
                         'l2_id': app_l2_id,
                         'app_name': '未命名应用',  # Default name when creating placeholder
-                        'overall_status': '待启动',
-                        'transformation_target': 'AK',
-                        'current_stage': '待启动',
-                        'responsible_team': '待分配',
-                        'responsible_person': '待分配',
-                        'progress_percentage': 0,
+                        'current_status': '待启动',
+                        'overall_transformation_target': 'AK',
+                        'current_transformation_phase': '待启动',
+                        'dev_team': '待分配',
+                        'dev_owner': '待分配',
                         'created_by': user.id,
                         'updated_by': user.id
                     }
@@ -1348,12 +1355,11 @@ class ExcelService:
                     app_id_map[app_l2_id] = application_id  # 更新映射以供后续行使用
                     print(f"DEBUG: Created placeholder application with ID {application_id} for L2 ID '{app_l2_id}'")
 
-                # Check if subtask exists (based on application_id, module_name, sub_target)
+                # Check if subtask exists (based on l2_id and sub_target)
                 existing = await db.execute(
                     select(SubTask).where(
                         and_(
-                            SubTask.application_id == application_id,
-                            SubTask.module_name == row.get('module_name'),
+                            SubTask.l2_id == application_id,  # l2_id now stores the application ID
                             SubTask.sub_target == row.get('sub_target')
                         )
                     )
@@ -1363,12 +1369,11 @@ class ExcelService:
                 if existing_subtask:
                     # Update existing subtask (只更新SubTask模型支持的字段)
                     subtask_model_fields = {
-                        'module_name', 'sub_target', 'version_name', 'task_status',
+                        'sub_target', 'version_name', 'task_status',
                         'progress_percentage', 'is_blocked', 'block_reason',
                         'planned_requirement_date', 'planned_release_date', 'planned_tech_online_date', 'planned_biz_online_date',
                         'actual_requirement_date', 'actual_release_date', 'actual_tech_online_date', 'actual_biz_online_date',
-                        'requirements', 'technical_notes', 'test_notes', 'deployment_notes',
-                        'priority', 'estimated_hours', 'actual_hours', 'assigned_to', 'reviewer'
+                        'notes', 'resource_applied', 'ops_requirement_submitted', 'ops_testing_status', 'launch_check_status'
                     }
 
                     for field, value in row.items():
@@ -1382,12 +1387,11 @@ class ExcelService:
                     # Create new subtask (只包含SubTask模型支持的字段)
                     subtask_data = {}
                     subtask_model_fields = {
-                        'module_name', 'sub_target', 'version_name', 'task_status',
+                        'sub_target', 'version_name', 'task_status',
                         'progress_percentage', 'is_blocked', 'block_reason',
                         'planned_requirement_date', 'planned_release_date', 'planned_tech_online_date', 'planned_biz_online_date',
                         'actual_requirement_date', 'actual_release_date', 'actual_tech_online_date', 'actual_biz_online_date',
-                        'requirements', 'technical_notes', 'test_notes', 'deployment_notes',
-                        'priority', 'estimated_hours', 'actual_hours', 'assigned_to', 'reviewer'
+                        'notes', 'resource_applied', 'ops_requirement_submitted', 'ops_testing_status', 'launch_check_status'
                     }
 
                     for k, v in row.items():
@@ -1395,15 +1399,13 @@ class ExcelService:
                             subtask_data[k] = v
 
                     # 添加必需的默认值
-                    subtask_data['application_id'] = application_id
+                    subtask_data['l2_id'] = application_id  # Now using l2_id to store application ID
                     if 'created_by' not in subtask_data:
                         subtask_data['created_by'] = user.id
                     if 'updated_by' not in subtask_data:
                         subtask_data['updated_by'] = user.id
 
                     # 确保必需字段有默认值
-                    if 'module_name' not in subtask_data or not subtask_data['module_name']:
-                        subtask_data['module_name'] = '默认模块'
                     if 'sub_target' not in subtask_data or not subtask_data['sub_target']:
                         subtask_data['sub_target'] = 'AK'
                     if 'task_status' not in subtask_data or not subtask_data['task_status']:
@@ -1412,8 +1414,8 @@ class ExcelService:
                         subtask_data['progress_percentage'] = 0
                     if 'is_blocked' not in subtask_data:
                         subtask_data['is_blocked'] = False
-                    if 'priority' not in subtask_data:
-                        subtask_data['priority'] = 1
+                    if 'resource_applied' not in subtask_data:
+                        subtask_data['resource_applied'] = False
 
                     new_subtask = SubTask(**subtask_data)
                     db.add(new_subtask)
