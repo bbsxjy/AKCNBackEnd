@@ -157,6 +157,14 @@ class ExcelMappingConfig:
         '联系人': 'dev_owner',
         '运维负责人': 'ops_owner',
 
+        # Additional mappings from unmapped headers
+        '是否已完成域名化改造': 'is_domain_transformation_completed',
+        '是否已完成DBPM改造': 'is_dbpm_transformation_completed',
+        '运维模式': 'ops_mode',
+        '研发模式': 'dev_mode',
+        '是否完成验收': 'acceptance_status',
+        '验收年份': 'ak_supervision_acceptance_year',
+
         # New organizational fields Chinese mappings
         '应用层级': 'app_tier',
         '所属L1名称': 'belonging_l1_name',
@@ -218,12 +226,10 @@ class ExcelMappingConfig:
 
     # SubTask field mappings (支持前端发送的英文字段名)
     SUBTASK_FIELDS = {
-        # 前端发送的英文字段名 (常见变体)
-        'application_l2_id': 'application_l2_id',
-        'app_l2_id': 'application_l2_id',  # 前端可能简化的字段名
-        'l2_id': 'application_l2_id',      # 另一种可能的简化
-        'module_name': 'module_name',
-        'module': 'module_name',           # 简化版本
+        # 前端发送的英文字段名 (常见变体) - all map to 'l2_id' for consistency
+        'application_l2_id': 'l2_id',  # Map to l2_id for consistency
+        'app_l2_id': 'l2_id',
+        'l2_id': 'l2_id',
         'sub_target': 'sub_target',
         'target': 'sub_target',            # 简化版本
         'transformation_target': 'sub_target',  # 完整版本
@@ -244,19 +250,22 @@ class ExcelMappingConfig:
         'actual_release_date': 'actual_release_date',
         'actual_tech_online_date': 'actual_tech_online_date',
         'actual_biz_online_date': 'actual_biz_online_date',
-        'estimated_hours': 'estimated_hours',
-        'work_estimate': 'estimated_hours', # 别名
-        'assigned_to': 'assigned_to',
-        'assignee': 'assigned_to',         # 别名
-        'responsible_person': 'assigned_to', # 别名
-        'notes': 'technical_notes',
-        'remarks': 'technical_notes',      # 别名
-        'description': 'technical_notes',  # 别名
+        # Notes field mapping
+        'notes': 'notes',
+        'remarks': 'notes',      # 别名
+        'description': 'notes',  # 别名
+        'technical_notes': 'notes',  # Backward compatibility
+
+        # New fields
+        'resource_applied': 'resource_applied',
+        'ops_requirement_submitted': 'ops_requirement_submitted',
+        'ops_testing_status': 'ops_testing_status',
+        'launch_check_status': 'launch_check_status',
+
         # 保留中文字段名兼容性（完整支持所有中文列名）
-        'L2ID': 'application_l2_id',        # Excel中的简化版本
-        'L2 ID': 'application_l2_id',       # Excel中的空格版本
-        '应用L2 ID': 'application_l2_id',   # 完整版本
-        'L2应用名': 'application_name',     # 应用名称字段
+        'L2ID': 'l2_id',        # Excel中的简化版本
+        'L2 ID': 'l2_id',       # Excel中的空格版本
+        '应用L2 ID': 'l2_id',   # 完整版本
         '子目标': 'sub_target',
         '版本名': 'version_name',           # 简化版本
         '版本名称': 'version_name',         # 完整版本
@@ -290,9 +299,13 @@ class ExcelMappingConfig:
 
         # New fields Chinese mappings
         '资源已申请': 'resource_applied',
+        '资源是否申请': 'resource_applied',
         '运维需求提交时间': 'ops_requirement_submitted',
+        '运营需求提交': 'ops_requirement_submitted',
         '运维测试状态': 'ops_testing_status',
-        '上线检查状态': 'launch_check_status'
+        '运营测试': 'ops_testing_status',
+        '上线检查状态': 'launch_check_status',
+        '上线检查': 'launch_check_status'
     }
 
     # Required fields (调整为更宽松的验证，适配前端数据)
