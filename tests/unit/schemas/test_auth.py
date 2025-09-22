@@ -6,7 +6,7 @@ import pytest
 from datetime import datetime
 from pydantic import ValidationError
 
-from app.schemas.auth import Token, TokenRefresh, TokenData, SSOTokenRequest, SSOTokenResponse, UserCreate, UserResponse
+from app.schemas.auth import Token, TokenRefresh, TokenData, SSOCallback, UserLogin, UserInfo
 
 
 class TestToken:
@@ -47,14 +47,14 @@ class TestToken:
             Token(expires_in=3600)
 
         errors = exc_info.value.errors()
-        assert any(error["field"] == "access_token" for error in errors)
+        assert any(error["loc"] == ("access_token",) for error in errors)
 
         # Missing expires_in
         with pytest.raises(ValidationError) as exc_info:
             Token(access_token="token")
 
         errors = exc_info.value.errors()
-        assert any(error["field"] == "expires_in" for error in errors)
+        assert any(error["loc"] == ("expires_in",) for error in errors)
 
     def test_token_default_token_type(self):
         """Test Token default token_type value."""
@@ -124,7 +124,7 @@ class TestTokenRefresh:
             TokenRefresh()
 
         errors = exc_info.value.errors()
-        assert any(error["field"] == "refresh_token" for error in errors)
+        assert any(error["loc"] == ("refresh_token",) for error in errors)
 
     def test_token_refresh_empty_string(self):
         """Test TokenRefresh with empty string."""
@@ -213,145 +213,133 @@ class TestTokenData:
             assert schema.email == email
 
 
-class TestSSOTokenRequest:
-    """Test SSOTokenRequest schema (if it exists)."""
+class TestSSOCallback:
+    """Test SSOCallback schema."""
 
-    def test_sso_token_request_basic(self):
-        """Test SSOTokenRequest basic functionality."""
-        try:
-            from app.schemas.auth import SSOTokenRequest
+    def test_sso_callback_with_required_field(self):
+        """Test SSOCallback with required field."""
+        data = {"code": "auth_code_123"}
 
-            data = {"sso_token": "valid_sso_token"}
-            schema = SSOTokenRequest(**data)
-            assert schema.sso_token == "valid_sso_token"
+        schema = SSOCallback(**data)
+        assert schema.code == "auth_code_123"
+        assert schema.state is None
+        assert schema.ip_address is None
 
-        except ImportError:
-            pytest.skip("SSOTokenRequest schema not found")
+    def test_sso_callback_with_all_fields(self):
+        """Test SSOCallback with all fields."""
+        data = {
+            "code": "auth_code_123",
+            "state": "csrf_state_token",
+            "ip_address": "192.168.1.1"
+        }
 
-    def test_sso_token_request_missing_token(self):
-        """Test SSOTokenRequest with missing token."""
-        try:
-            from app.schemas.auth import SSOTokenRequest
+        schema = SSOCallback(**data)
+        assert schema.code == "auth_code_123"
+        assert schema.state == "csrf_state_token"
+        assert schema.ip_address == "192.168.1.1"
 
-            with pytest.raises(ValidationError) as exc_info:
-                SSOTokenRequest()
+    def test_sso_callback_missing_required_field(self):
+        """Test SSOCallback validation error for missing code."""
+        with pytest.raises(ValidationError) as exc_info:
+            SSOCallback()
 
-            errors = exc_info.value.errors()
-            assert any(error["field"] == "sso_token" for error in errors)
-
-        except ImportError:
-            pytest.skip("SSOTokenRequest schema not found")
-
-
-class TestSSOTokenResponse:
-    """Test SSOTokenResponse schema (if it exists)."""
-
-    def test_sso_token_response_basic(self):
-        """Test SSOTokenResponse basic functionality."""
-        try:
-            from app.schemas.auth import SSOTokenResponse
-
-            data = {
-                "valid": True,
-                "user_id": "user123",
-                "email": "user@example.com"
-            }
-            schema = SSOTokenResponse(**data)
-            assert schema.valid is True
-            assert schema.user_id == "user123"
-            assert schema.email == "user@example.com"
-
-        except ImportError:
-            pytest.skip("SSOTokenResponse schema not found")
+        errors = exc_info.value.errors()
+        assert any(error["loc"] == ("code",) for error in errors)
 
 
-class TestUserCreate:
-    """Test UserCreate schema (if it exists)."""
+class TestUserLogin:
+    """Test UserLogin schema."""
 
-    def test_user_create_basic(self):
-        """Test UserCreate basic functionality."""
-        try:
-            from app.schemas.auth import UserCreate
+    def test_user_login_with_valid_email(self):
+        """Test UserLogin with valid email and password."""
+        data = {
+            "username": "user@example.com",
+            "password": "secure_password"
+        }
 
-            data = {
-                "username": "testuser",
-                "email": "test@example.com",
-                "full_name": "Test User"
-            }
-            schema = UserCreate(**data)
-            assert schema.username == "testuser"
-            assert schema.email == "test@example.com"
-            assert schema.full_name == "Test User"
+        schema = UserLogin(**data)
+        assert schema.username == "user@example.com"
+        assert schema.password == "secure_password"
 
-        except ImportError:
-            pytest.skip("UserCreate schema not found")
+    def test_user_login_invalid_email(self):
+        """Test UserLogin with invalid email format."""
+        with pytest.raises(ValidationError):
+            UserLogin(
+                username="invalid_email",
+                password="password"
+            )
 
-    def test_user_create_email_validation(self):
-        """Test UserCreate email validation."""
-        try:
-            from app.schemas.auth import UserCreate
+    def test_user_login_missing_fields(self):
+        """Test UserLogin validation errors for missing fields."""
+        # Missing password
+        with pytest.raises(ValidationError) as exc_info:
+            UserLogin(username="user@example.com")
 
-            # Test invalid email
-            with pytest.raises(ValidationError):
-                UserCreate(
-                    username="testuser",
-                    email="invalid_email",
-                    full_name="Test User"
-                )
+        errors = exc_info.value.errors()
+        assert any(error["loc"] == ("password",) for error in errors)
 
-        except ImportError:
-            pytest.skip("UserCreate schema not found")
+        # Missing username
+        with pytest.raises(ValidationError) as exc_info:
+            UserLogin(password="password")
+
+        errors = exc_info.value.errors()
+        assert any(error["loc"] == ("username",) for error in errors)
 
 
-class TestUserResponse:
-    """Test UserResponse schema (if it exists)."""
+class TestUserInfo:
+    """Test UserInfo schema."""
 
-    def test_user_response_basic(self):
-        """Test UserResponse basic functionality."""
-        try:
-            from app.schemas.auth import UserResponse
+    def test_user_info_with_required_fields(self):
+        """Test UserInfo with required fields."""
+        data = {
+            "id": 1,
+            "employee_id": "EMP001",
+            "email": "user@example.com",
+            "full_name": "Test User",
+            "role": "admin",
+            "is_active": True,
+            "created_at": datetime.now()
+        }
 
-            data = {
-                "id": 1,
-                "username": "testuser",
-                "email": "test@example.com",
-                "full_name": "Test User",
-                "role": "editor",
-                "is_active": True
-            }
-            schema = UserResponse(**data)
-            assert schema.id == 1
-            assert schema.username == "testuser"
-            assert schema.email == "test@example.com"
-            assert schema.full_name == "Test User"
-            assert schema.role == "editor"
-            assert schema.is_active is True
+        schema = UserInfo(**data)
+        assert schema.id == 1
+        assert schema.employee_id == "EMP001"
+        assert schema.email == "user@example.com"
+        assert schema.full_name == "Test User"
+        assert schema.role == "admin"
+        assert schema.is_active is True
 
-        except ImportError:
-            pytest.skip("UserResponse schema not found")
+    def test_user_info_with_optional_fields(self):
+        """Test UserInfo with optional fields."""
+        data = {
+            "id": 1,
+            "employee_id": "EMP001",
+            "email": "user@example.com",
+            "full_name": "Test User",
+            "role": "admin",
+            "team": "Development",
+            "is_active": True,
+            "created_at": datetime.now(),
+            "last_login": datetime.now()
+        }
 
-    def test_user_response_with_timestamps(self):
-        """Test UserResponse with timestamp fields."""
-        try:
-            from app.schemas.auth import UserResponse
-            from datetime import datetime, timezone
+        schema = UserInfo(**data)
+        assert schema.team == "Development"
+        assert schema.last_login is not None
 
-            now = datetime.now(timezone.utc)
-
-            data = {
-                "id": 1,
-                "username": "testuser",
-                "email": "test@example.com",
-                "full_name": "Test User",
-                "created_at": now,
-                "updated_at": now
-            }
-            schema = UserResponse(**data)
-            assert schema.created_at == now
-            assert schema.updated_at == now
-
-        except ImportError:
-            pytest.skip("UserResponse schema not found")
+    def test_user_info_email_validation(self):
+        """Test UserInfo email validation."""
+        # Test invalid email
+        with pytest.raises(ValidationError):
+            UserInfo(
+                id=1,
+                employee_id="EMP001",
+                email="invalid_email",
+                full_name="Test User",
+                role="admin",
+                is_active=True,
+                created_at=datetime.now()
+            )
 
 
 class TestAuthSchemaEdgeCases:
@@ -403,7 +391,7 @@ class TestAuthSchemaEdgeCases:
         }
 
         schema = Token(**data)
-        json_data = schema.dict()
+        json_data = schema.model_dump()
 
         assert json_data["access_token"] == "test_token"
         assert json_data["refresh_token"] == "refresh_token"
@@ -418,7 +406,7 @@ class TestAuthSchemaEdgeCases:
         }
 
         schema = TokenData(**data)
-        dict_data = schema.dict(exclude_none=True)
+        dict_data = schema.model_dump(exclude_none=True)
 
         assert "user_id" in dict_data
         assert "email" in dict_data

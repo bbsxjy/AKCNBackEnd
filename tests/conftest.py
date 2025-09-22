@@ -22,7 +22,7 @@ from app.models.user import User, UserRole
 from app.models.application import Application, ApplicationStatus, TransformationTarget
 from app.models.subtask import SubTask, SubTaskStatus
 from app.models.audit_log import AuditLog
-from app.models.notification import Notification, NotificationType
+from app.models.notification import Notification
 from app.api.deps import get_current_active_user
 
 
@@ -50,7 +50,7 @@ async def test_engine():
 
     # Import all models to ensure they are registered with SQLAlchemy
     from app.models import User, Application, SubTask, AuditLog, Notification
-    from app.models.application import Base
+    from app.core.database import Base
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -127,7 +127,7 @@ def admin_user() -> User:
         full_name="Admin User",
         email="admin@example.com",
         role=UserRole.ADMIN,
-        team="IT Administration",
+        department="IT",
         is_active=True,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc)
@@ -144,7 +144,7 @@ def manager_user() -> User:
         full_name="Manager User",
         email="manager@example.com",
         role=UserRole.MANAGER,
-        team="Core Development",
+        department="Development",
         is_active=True,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc)
@@ -161,7 +161,7 @@ def editor_user() -> User:
         full_name="Editor User",
         email="editor@example.com",
         role=UserRole.EDITOR,
-        team="Core Development",
+        department="Development",
         is_active=True,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc)
@@ -178,7 +178,7 @@ def viewer_user() -> User:
         full_name="Viewer User",
         email="viewer@example.com",
         role=UserRole.VIEWER,
-        team="Business Analysis",
+        department="Business",
         is_active=True,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc)
@@ -263,9 +263,8 @@ def sample_notification(manager_user) -> Notification:
         user_id=manager_user.id,
         title="Test Notification",
         message="This is a test notification",
-        notification_type=NotificationType.DELAY_WARNING,
+        type="delay_warning",
         is_read=False,
-        metadata={"application_id": 1, "delay_days": 5},
         created_at=datetime.now(timezone.utc)
     )
 
@@ -498,7 +497,7 @@ def application_status(request):
 @pytest.fixture(params=[
     SubTaskStatus.NOT_STARTED,
     SubTaskStatus.DEV_IN_PROGRESS,
-    SubTaskStatus.DEV_COMPLETED,
+    SubTaskStatus.TECH_ONLINE,
     SubTaskStatus.BIZ_ONLINE,
     SubTaskStatus.COMPLETED
 ])
@@ -509,8 +508,7 @@ def subtask_status(request):
 
 @pytest.fixture(params=[
     TransformationTarget.AK,
-    TransformationTarget.CLOUD_NATIVE,
-    TransformationTarget.BOTH
+    TransformationTarget.CLOUD_NATIVE
 ])
 def transformation_target(request):
     """Parametrized transformation target for comprehensive testing."""

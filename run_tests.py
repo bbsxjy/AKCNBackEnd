@@ -42,13 +42,13 @@ def main():
 
     # Install test dependencies if needed
     print("\n1. Installing/updating test dependencies...")
-    install_result = run_command([
-        sys.executable, "-m", "pip", "install", "-r", "requirements.txt"
-    ], "Installing dependencies")
+    # install_result = run_command([
+    #     sys.executable, "-m", "pip", "install", "-r", "requirements.txt"
+    # ], "Installing dependencies")
 
-    if install_result.returncode != 0:
-        print("❌ Failed to install dependencies")
-        return False
+    # if install_result.returncode != 0:
+    #     print("❌ Failed to install dependencies")
+    #     return False
 
     # Run unit tests with coverage
     print("\n2. Running unit tests with coverage...")
