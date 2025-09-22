@@ -44,7 +44,7 @@ class DashboardService:
         # Apply filters
         conditions = []
         if team:
-            conditions.append(Application.responsible_team == team)
+            conditions.append(Application.dev_team == team)
 
         if period:
             period_days = {
@@ -89,11 +89,11 @@ class DashboardService:
 
         for app in applications:
             # Status
-            status_key = app.overall_status.value if hasattr(app.overall_status, 'value') else str(app.overall_status)
+            status_key = app.current_status.value if hasattr(app.current_status, 'value') else str(app.current_status)
             status_counts[status_key] = status_counts.get(status_key, 0) + 1
 
             # Target
-            target_key = app.transformation_target.value if hasattr(app.transformation_target, 'value') else str(app.transformation_target)
+            target_key = app.overall_transformation_target.value if hasattr(app.overall_transformation_target, 'value') else str(app.overall_transformation_target)
             target_counts[target_key] = target_counts.get(target_key, 0) + 1
 
             # Delayed
@@ -136,7 +136,7 @@ class DashboardService:
         team_metrics = {}
 
         for app in applications:
-            team = app.responsible_team
+            team = app.dev_team if app.dev_team else "未分配"
 
             if team not in team_metrics:
                 team_metrics[team] = {
@@ -156,11 +156,11 @@ class DashboardService:
             metrics["app_ids"].append(app.id)
 
             # Status counts
-            if app.overall_status == ApplicationStatus.COMPLETED:
+            if app.current_status == ApplicationStatus.COMPLETED:
                 metrics["completed"] += 1
-            elif app.overall_status in [ApplicationStatus.DEV_IN_PROGRESS, ApplicationStatus.BIZ_ONLINE]:
+            elif app.current_status in [ApplicationStatus.DEV_IN_PROGRESS, ApplicationStatus.BIZ_ONLINE]:
                 metrics["in_progress"] += 1
-            elif app.overall_status == ApplicationStatus.NOT_STARTED:
+            elif app.current_status == ApplicationStatus.NOT_STARTED:
                 metrics["not_started"] += 1
 
             if app.is_delayed:
@@ -242,7 +242,7 @@ class DashboardService:
         if application_id:
             query = query.where(Application.id == application_id)
         if team:
-            query = query.where(Application.responsible_team == team)
+            query = query.where(Application.dev_team == team)
 
         result = await db.execute(query)
         applications = result.scalars().all()
@@ -357,7 +357,7 @@ class DashboardService:
             if app_id not in blocking_by_app:
                 blocking_by_app[app_id] = {
                     "application_name": subtask.application.app_name if subtask.application else "Unknown",
-                    "team": subtask.application.responsible_team if subtask.application else "Unknown",
+                    "team": subtask.application.dev_team if subtask.application else "Unknown",
                     "blocked_count": 0,
                     "subtasks": []
                 }
@@ -370,7 +370,7 @@ class DashboardService:
 
             # By team
             if subtask.application:
-                team = subtask.application.responsible_team
+                team = subtask.application.dev_team
                 blocked_teams[team] = blocked_teams.get(team, 0) + 1
 
         return {

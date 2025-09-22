@@ -155,11 +155,11 @@ async def export_applications_to_excel(
                 app.id,
                 app.l2_id,
                 app.app_name,
-                app.supervision_year,
-                app.transformation_target,
-                app.responsible_team,
-                app.responsible_person or "",
-                app.overall_status,
+                app.ak_supervision_acceptance_year,
+                app.overall_transformation_target,
+                app.dev_team,
+                app.dev_owner or "",
+                app.current_status,
                 app.progress_percentage,
                 app.created_at.isoformat() if app.created_at else "",
                 app.updated_at.isoformat() if app.updated_at else ""
@@ -206,8 +206,8 @@ async def export_subtasks_to_excel(
             filters['sub_target'] = export_request.sub_target
         if export_request.is_blocked is not None:
             filters['is_blocked'] = export_request.is_blocked
-        if export_request.responsible_person:
-            filters['responsible_person'] = export_request.responsible_person
+        if hasattr(export_request, 'dev_owner') and export_request.dev_owner:
+            filters['dev_owner'] = export_request.dev_owner
 
         # Generate Excel file
         excel_data = await excel_service.export_subtasks_to_excel(

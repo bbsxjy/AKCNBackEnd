@@ -52,7 +52,7 @@ class ReportService:
         self,
         db: AsyncSession,
         supervision_year: Optional[int] = None,
-        responsible_team: Optional[str] = None,
+        dev_team: Optional[str] = None,
         transformation_target: Optional[str] = None,
         include_details: bool = True
     ) -> Dict[str, Any]:
@@ -64,11 +64,11 @@ class ReportService:
         # Apply filters
         conditions = []
         if supervision_year:
-            conditions.append(Application.supervision_year == supervision_year)
-        if responsible_team:
-            conditions.append(Application.responsible_team == responsible_team)
+            conditions.append(Application.ak_supervision_acceptance_year == supervision_year)
+        if dev_team:
+            conditions.append(Application.dev_team == dev_team)
         if transformation_target:
-            conditions.append(Application.transformation_target == transformation_target)
+            conditions.append(Application.overall_transformation_target == transformation_target)
 
         if conditions:
             query = query.where(and_(*conditions))
@@ -115,7 +115,7 @@ class ReportService:
 
         for app in applications:
             # Status distribution
-            status_distribution[app.overall_status] += 1
+            status_distribution[app.current_status] += 1
 
             # Progress ranges
             progress = app.progress_percentage or 0
@@ -136,13 +136,13 @@ class ReportService:
                 completed_apps += 1
 
             # Team statistics
-            team = app.responsible_team
+            team = app.dev_team if app.dev_team else "未分配"
             team_stats[team]["total"] += 1
             team_stats[team]["total_progress"] += progress
 
-            if app.overall_status == ApplicationStatus.COMPLETED:
+            if app.current_status == ApplicationStatus.COMPLETED:
                 team_stats[team]["completed"] += 1
-            elif app.overall_status == ApplicationStatus.NOT_STARTED:
+            elif app.current_status == ApplicationStatus.NOT_STARTED:
                 team_stats[team]["not_started"] += 1
             else:
                 team_stats[team]["in_progress"] += 1
@@ -151,7 +151,7 @@ class ReportService:
             target = app.transformation_target
             if target in target_stats:
                 target_stats[target]["total"] += 1
-                if app.overall_status == ApplicationStatus.COMPLETED:
+                if app.current_status == ApplicationStatus.COMPLETED:
                     target_stats[target]["completed"] += 1
 
             # Check for delays
@@ -167,9 +167,9 @@ class ReportService:
                 application_details.append({
                     "l2_id": app.l2_id,
                     "app_name": app.app_name,
-                    "responsible_team": app.responsible_team,
-                    "responsible_person": app.responsible_person,
-                    "overall_status": app.overall_status,
+                    "dev_team": app.dev_team,
+                    "dev_owner": app.dev_owner,
+                    "overall_status": app.current_status,
                     "progress_percentage": progress,
                     "subtask_total": subtask_summary["total"],
                     "subtask_completed": subtask_summary["completed"],
@@ -202,7 +202,7 @@ class ReportService:
             "generated_at": datetime.utcnow().isoformat(),
             "filters": {
                 "supervision_year": supervision_year,
-                "responsible_team": responsible_team,
+                "dev_team": dev_team,
                 "transformation_target": transformation_target
             },
             "summary": {
@@ -249,9 +249,9 @@ class ReportService:
         """Generate department/team comparison report."""
 
         # Get all teams
-        teams_query = select(Application.responsible_team).distinct()
+        teams_query = select(Application.dev_team).distinct()
         if supervision_year:
-            teams_query = teams_query.where(Application.supervision_year == supervision_year)
+            teams_query = teams_query.where(Application.ak_supervision_acceptance_year == supervision_year)
 
         teams_result = await db.execute(teams_query)
         teams = [row[0] for row in teams_result.all() if row[0]]
@@ -262,10 +262,10 @@ class ReportService:
         for team in teams:
             # Get team applications
             app_query = select(Application).options(selectinload(Application.sub_tasks))
-            app_query = app_query.where(Application.responsible_team == team)
+            app_query = app_query.where(Application.dev_team == team)
 
             if supervision_year:
-                app_query = app_query.where(Application.supervision_year == supervision_year)
+                app_query = app_query.where(Application.ak_supervision_acceptance_year == supervision_year)
 
             result = await db.execute(app_query)
             team_apps = result.scalars().all()
@@ -275,7 +275,7 @@ class ReportService:
 
             # Calculate team metrics
             total_apps = len(team_apps)
-            completed_apps = sum(1 for app in team_apps if app.overall_status == ApplicationStatus.COMPLETED)
+            completed_apps = sum(1 for app in team_apps if app.current_status == ApplicationStatus.COMPLETED)
             total_progress = sum(app.progress_percentage or 0 for app in team_apps)
             average_progress = round(total_progress / total_apps, 2) if total_apps > 0 else 0
 
@@ -378,7 +378,7 @@ class ReportService:
         self,
         db: AsyncSession,
         supervision_year: Optional[int] = None,
-        responsible_team: Optional[str] = None,
+        dev_team: Optional[str] = None,
         severity_threshold: int = 7  # Days delayed to be considered severe
     ) -> Dict[str, Any]:
         """Generate report of delayed projects with detailed analysis."""
@@ -388,9 +388,9 @@ class ReportService:
 
         conditions = []
         if supervision_year:
-            conditions.append(Application.supervision_year == supervision_year)
-        if responsible_team:
-            conditions.append(Application.responsible_team == responsible_team)
+            conditions.append(Application.ak_supervision_acceptance_year == supervision_year)
+        if dev_team:
+            conditions.append(Application.dev_team == dev_team)
 
         if conditions:
             query = query.where(and_(*conditions))
@@ -415,9 +415,9 @@ class ReportService:
                 project_delay = {
                     "l2_id": app.l2_id,
                     "app_name": app.app_name,
-                    "responsible_team": app.responsible_team,
-                    "responsible_person": app.responsible_person,
-                    "overall_status": app.overall_status,
+                    "dev_team": app.dev_team,
+                    "dev_owner": app.dev_owner,
+                    "overall_status": app.current_status,
                     "progress_percentage": app.progress_percentage,
                     "delay_days": delay_info["total_delay_days"],
                     "delay_stages": delay_info["delayed_stages"],
@@ -449,7 +449,7 @@ class ReportService:
         # Team delay analysis
         team_delays = defaultdict(lambda: {"count": 0, "total_days": 0})
         for project in delayed_projects:
-            team = project["responsible_team"]
+            team = project["dev_team"]
             team_delays[team]["count"] += 1
             team_delays[team]["total_days"] += project["delay_days"]
 
@@ -482,7 +482,7 @@ class ReportService:
             "generated_at": datetime.utcnow().isoformat(),
             "filters": {
                 "supervision_year": supervision_year,
-                "responsible_team": responsible_team,
+                "dev_team": dev_team,
                 "severity_threshold": severity_threshold
             },
             "summary": {
@@ -636,7 +636,7 @@ class ReportService:
                 avg_progress = sum(app.progress_percentage or 0 for app in applications) / len(applications) if applications else 0
                 report_data["metrics"]["average_progress"] = round(avg_progress, 2)
             elif metric == "completion_rate":
-                completed = sum(1 for app in applications if app.overall_status == ApplicationStatus.COMPLETED)
+                completed = sum(1 for app in applications if app.current_status == ApplicationStatus.COMPLETED)
                 report_data["metrics"]["completion_rate"] = round((completed / len(applications)) * 100, 2) if applications else 0
             elif metric == "delay_rate":
                 delayed = sum(1 for app in applications if self._check_if_delayed(app))
@@ -647,9 +647,9 @@ class ReportService:
             grouped_data = {}
             for grouping in groupings:
                 if grouping == "team":
-                    grouped_data["by_team"] = self._group_by_field(applications, "responsible_team")
+                    grouped_data["by_team"] = self._group_by_field(applications, "dev_team")
                 elif grouping == "status":
-                    grouped_data["by_status"] = self._group_by_field(applications, "overall_status")
+                    grouped_data["by_status"] = self._group_by_field(applications, "current_status")
                 elif grouping == "target":
                     grouped_data["by_target"] = self._group_by_field(applications, "transformation_target")
 
@@ -986,7 +986,7 @@ class ReportService:
             grouped[key]["count"] += 1
             grouped[key]["total_progress"] += app.progress_percentage or 0
 
-            if app.overall_status == ApplicationStatus.COMPLETED:
+            if app.current_status == ApplicationStatus.COMPLETED:
                 grouped[key]["completed"] += 1
 
             if self._check_if_delayed(app):

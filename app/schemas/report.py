@@ -60,8 +60,8 @@ class ReportGenerationRequest(BaseModel):
 
 class ProgressSummaryRequest(ReportGenerationRequest):
     """Schema for progress summary report request."""
-    supervision_year: Optional[int] = Field(None, ge=2020, le=2030, description="Filter by supervision year")
-    responsible_team: Optional[str] = Field(None, description="Filter by responsible team")
+    supervision_year: Optional[int] = Field(None, description="Filter by supervision year")
+    dev_team: Optional[str] = Field(None, description="Filter by development team")
     transformation_target: Optional[str] = Field(None, description="Filter by transformation target")
     include_details: bool = Field(True, description="Include application details")
     group_by: Optional[List[str]] = Field(None, description="Grouping fields")
@@ -69,7 +69,7 @@ class ProgressSummaryRequest(ReportGenerationRequest):
 
 class DepartmentComparisonRequest(ReportGenerationRequest):
     """Schema for department comparison report request."""
-    supervision_year: Optional[int] = Field(None, ge=2020, le=2030, description="Filter by supervision year")
+    supervision_year: Optional[int] = Field(None, description="Filter by supervision year")
     include_subtasks: bool = Field(True, description="Include subtask metrics")
     comparison_metrics: Optional[List[str]] = Field(
         None,
@@ -80,8 +80,8 @@ class DepartmentComparisonRequest(ReportGenerationRequest):
 
 class DelayedProjectsRequest(ReportGenerationRequest):
     """Schema for delayed projects report request."""
-    supervision_year: Optional[int] = Field(None, ge=2020, le=2030, description="Filter by supervision year")
-    responsible_team: Optional[str] = Field(None, description="Filter by team")
+    supervision_year: Optional[int] = Field(None, description="Filter by supervision year")
+    dev_team: Optional[str] = Field(None, description="Filter by development team")
     severity_threshold: int = Field(7, ge=1, le=90, description="Days delayed for severity classification")
     include_risk_analysis: bool = Field(True, description="Include risk factor analysis")
     include_recommendations: bool = Field(True, description="Include recommendations")
@@ -89,7 +89,7 @@ class DelayedProjectsRequest(ReportGenerationRequest):
 
 class TrendAnalysisRequest(ReportGenerationRequest):
     """Schema for trend analysis report request."""
-    supervision_year: Optional[int] = Field(None, ge=2020, le=2030, description="Filter by supervision year")
+    supervision_year: Optional[int] = Field(None, description="Filter by supervision year")
     time_period: TimePeriod = Field(TimePeriod.MONTHLY, description="Time period for analysis")
     metrics: Optional[List[str]] = Field(
         None,
@@ -151,9 +151,9 @@ class DelayedProject(BaseModel):
     """Schema for delayed project information."""
     l2_id: str = Field(..., description="Application L2 ID")
     app_name: str = Field(..., description="Application name")
-    responsible_team: str = Field(..., description="Responsible team")
-    responsible_person: Optional[str] = Field(None, description="Responsible person")
-    overall_status: str = Field(..., description="Overall status")
+    dev_team: str = Field(..., description="Development team")
+    dev_owner: Optional[str] = Field(None, description="Development owner")
+    current_status: str = Field(..., description="Current status")
     progress_percentage: int = Field(..., ge=0, le=100, description="Progress percentage")
     delay_days: int = Field(..., ge=0, description="Days delayed")
     delay_severity: str = Field(..., description="Delay severity (minor, moderate, severe)")

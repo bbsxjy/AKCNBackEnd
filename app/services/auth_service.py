@@ -263,13 +263,13 @@ class AuthService:
         
         # Manager can access their team's data
         if user.role == "Manager":
-            if hasattr(entity, "responsible_team"):
-                return entity.responsible_team == user.team
-        
+            if hasattr(entity, "dev_team"):
+                return entity.dev_team == user.team
+
         # Editor can access assigned entities
         if user.role == "Editor":
-            if hasattr(entity, "responsible_person"):
-                return entity.responsible_person == user.full_name
+            if hasattr(entity, "dev_owner"):
+                return entity.dev_owner == user.full_name
         
         return False
     

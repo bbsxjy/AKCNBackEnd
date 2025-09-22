@@ -10,12 +10,14 @@ from app.models.application import TransformationTarget, ApplicationStatus
 
 class ApplicationBase(BaseModel):
     """Base application schema with common fields."""
-    l2_id: str = Field(..., description="L2 ID (unique identifier)", min_length=1, max_length=20)
-    app_name: str = Field(..., description="Application name", min_length=1, max_length=100)
-    supervision_year: int = Field(..., description="Supervision year")
-    transformation_target: TransformationTarget = Field(..., description="Transformation target")
-    responsible_team: str = Field(..., description="Responsible team", max_length=50)
-    responsible_person: Optional[str] = Field(None, description="Responsible person", max_length=50)
+    l2_id: str = Field(..., description="L2 ID (unique identifier)", min_length=1, max_length=50)
+    app_name: str = Field(..., description="Application name", min_length=1, max_length=200)
+    ak_supervision_acceptance_year: Optional[int] = Field(None, description="AK supervision acceptance year")
+    overall_transformation_target: Optional[str] = Field(None, description="Overall transformation target")
+    dev_team: Optional[str] = Field(None, description="Development team", max_length=100)
+    dev_owner: Optional[str] = Field(None, description="Development owner", max_length=50)
+    ops_team: Optional[str] = Field(None, description="Operations team", max_length=100)
+    ops_owner: Optional[str] = Field(None, description="Operations owner", max_length=50)
     notes: Optional[str] = Field(None, description="Additional notes")
 
     @validator('l2_id')
@@ -36,6 +38,27 @@ class ApplicationBase(BaseModel):
 
 class ApplicationCreate(ApplicationBase):
     """Schema for creating a new application."""
+    # Core fields
+    is_ak_completed: bool = Field(False, description="Is AK completed")
+    is_cloud_native_completed: bool = Field(False, description="Is cloud native completed")
+    current_transformation_phase: Optional[str] = Field(None, description="Current transformation phase")
+    current_status: Optional[str] = Field(ApplicationStatus.NOT_STARTED, description="Current status")
+
+    # Organizational fields
+    app_tier: Optional[int] = Field(None, description="Application tier")
+    belonging_l1_name: Optional[str] = Field(None, description="Belonging L1 name", max_length=100)
+    belonging_projects: Optional[str] = Field(None, description="Belonging projects", max_length=200)
+    is_domain_transformation_completed: bool = Field(False, description="Is domain transformation completed")
+    is_dbpm_transformation_completed: bool = Field(False, description="Is DBPM transformation completed")
+
+    # Mode fields
+    dev_mode: Optional[str] = Field(None, description="Development mode", max_length=50)
+    ops_mode: Optional[str] = Field(None, description="Operations mode", max_length=50)
+
+    # Tracking fields
+    belonging_kpi: Optional[str] = Field(None, description="Belonging KPI", max_length=100)
+    acceptance_status: Optional[str] = Field(None, description="Acceptance status", max_length=50)
+
     # Planned dates (optional during creation)
     planned_requirement_date: Optional[date] = Field(None, description="Planned requirement date")
     planned_release_date: Optional[date] = Field(None, description="Planned release date")
@@ -66,11 +89,32 @@ class ApplicationCreate(ApplicationBase):
 
 class ApplicationUpdate(BaseModel):
     """Schema for updating an application."""
-    app_name: Optional[str] = Field(None, description="Application name", min_length=1, max_length=100)
-    supervision_year: Optional[int] = Field(None, description="Supervision year")
-    transformation_target: Optional[TransformationTarget] = Field(None, description="Transformation target")
-    responsible_team: Optional[str] = Field(None, description="Responsible team", max_length=50)
-    responsible_person: Optional[str] = Field(None, description="Responsible person", max_length=50)
+    app_name: Optional[str] = Field(None, description="Application name", min_length=1, max_length=200)
+    ak_supervision_acceptance_year: Optional[int] = Field(None, description="AK supervision acceptance year")
+    overall_transformation_target: Optional[str] = Field(None, description="Overall transformation target")
+    is_ak_completed: Optional[bool] = Field(None, description="Is AK completed")
+    is_cloud_native_completed: Optional[bool] = Field(None, description="Is cloud native completed")
+    current_transformation_phase: Optional[str] = Field(None, description="Current transformation phase")
+    current_status: Optional[str] = Field(None, description="Current status")
+
+    # Organizational fields
+    app_tier: Optional[int] = Field(None, description="Application tier")
+    belonging_l1_name: Optional[str] = Field(None, description="Belonging L1 name", max_length=100)
+    belonging_projects: Optional[str] = Field(None, description="Belonging projects", max_length=200)
+    is_domain_transformation_completed: Optional[bool] = Field(None, description="Is domain transformation completed")
+    is_dbpm_transformation_completed: Optional[bool] = Field(None, description="Is DBPM transformation completed")
+
+    # Team fields
+    dev_mode: Optional[str] = Field(None, description="Development mode", max_length=50)
+    ops_mode: Optional[str] = Field(None, description="Operations mode", max_length=50)
+    dev_owner: Optional[str] = Field(None, description="Development owner", max_length=50)
+    dev_team: Optional[str] = Field(None, description="Development team", max_length=100)
+    ops_owner: Optional[str] = Field(None, description="Operations owner", max_length=50)
+    ops_team: Optional[str] = Field(None, description="Operations team", max_length=100)
+
+    # Tracking fields
+    belonging_kpi: Optional[str] = Field(None, description="Belonging KPI", max_length=100)
+    acceptance_status: Optional[str] = Field(None, description="Acceptance status", max_length=50)
     notes: Optional[str] = Field(None, description="Additional notes")
 
     # Planned dates
@@ -93,16 +137,39 @@ class ApplicationUpdate(BaseModel):
         return v.strip() if v else None
 
 
-class ApplicationResponse(ApplicationBase):
-    """Schema for application response."""
+class ApplicationResponse(BaseModel):
+    """Schema for application response - matches database model exactly."""
     id: int = Field(..., description="Application ID")
-    overall_status: ApplicationStatus = Field(..., description="Overall status")
-    current_stage: Optional[str] = Field(None, description="Current stage")
-    progress_percentage: int = Field(..., description="Progress percentage")
+    l2_id: str = Field(..., description="L2 ID")
+    app_name: str = Field(..., description="Application name")
 
-    # Status flags
-    is_ak_completed: bool = Field(..., description="AK completion status")
-    is_cloud_native_completed: bool = Field(..., description="Cloud native completion status")
+    # Core tracking fields
+    ak_supervision_acceptance_year: Optional[int] = Field(None, description="AK supervision acceptance year")
+    overall_transformation_target: Optional[str] = Field(None, description="Overall transformation target")
+    is_ak_completed: bool = Field(default=False, description="Is AK completed")
+    is_cloud_native_completed: bool = Field(default=False, description="Is cloud native completed")
+    current_transformation_phase: Optional[str] = Field(None, description="Current transformation phase")
+    current_status: str = Field(default="待启动", description="Current status")
+
+    # Organizational fields
+    app_tier: Optional[int] = Field(None, description="Application tier")
+    belonging_l1_name: Optional[str] = Field(None, description="Belonging L1 name")
+    belonging_projects: Optional[str] = Field(None, description="Belonging projects")
+    is_domain_transformation_completed: bool = Field(default=False, description="Is domain transformation completed")
+    is_dbpm_transformation_completed: bool = Field(default=False, description="Is DBPM transformation completed")
+
+    # Team and ownership fields
+    dev_mode: Optional[str] = Field(None, description="Development mode")
+    ops_mode: Optional[str] = Field(None, description="Operations mode")
+    dev_owner: Optional[str] = Field(None, description="Development owner")
+    dev_team: Optional[str] = Field(None, description="Development team")
+    ops_owner: Optional[str] = Field(None, description="Operations owner")
+    ops_team: Optional[str] = Field(None, description="Operations team")
+
+    # Tracking fields
+    belonging_kpi: Optional[str] = Field(None, description="Belonging KPI")
+    acceptance_status: Optional[str] = Field(None, description="Acceptance status")
+    notes: Optional[str] = Field(None, description="Additional notes")
 
     # Planned dates
     planned_requirement_date: Optional[date] = Field(None, description="Planned requirement date")
@@ -117,10 +184,11 @@ class ApplicationResponse(ApplicationBase):
     actual_biz_online_date: Optional[date] = Field(None, description="Actual biz online date")
 
     # Delay tracking
-    is_delayed: bool = Field(..., description="Delay status")
-    delay_days: int = Field(..., description="Delay days")
+    is_delayed: bool = Field(default=False, description="Delay status")
+    delay_days: int = Field(default=0, description="Delay days")
 
-    # Statistics (optional for list views, populated only when needed)
+    # Calculated fields (from database model properties)
+    progress_percentage: int = Field(default=0, description="Progress percentage calculated from subtasks")
     subtask_count: Optional[int] = Field(0, description="Total subtask count")
     completed_subtask_count: Optional[int] = Field(0, description="Completed subtask count")
     completion_rate: Optional[float] = Field(0.0, description="Completion rate percentage")
@@ -149,10 +217,13 @@ class ApplicationFilter(BaseModel):
     l2_id: Optional[str] = Field(None, description="L2 ID filter")
     app_name: Optional[str] = Field(None, description="Application name filter")
     status: Optional[ApplicationStatus] = Field(None, description="Status filter")
-    department: Optional[str] = Field(None, description="Department filter (responsible_team)")
-    year: Optional[int] = Field(None, description="Supervision year filter", ge=2024, le=2030)
+    dev_team: Optional[str] = Field(None, description="Development team filter")
+    ops_team: Optional[str] = Field(None, description="Operations team filter")
+    year: Optional[int] = Field(None, description="Supervision year filter")
     target: Optional[TransformationTarget] = Field(None, description="Transformation target filter")
     is_delayed: Optional[bool] = Field(None, description="Delayed status filter")
+    is_ak_completed: Optional[bool] = Field(None, description="AK completion filter")
+    is_cloud_native_completed: Optional[bool] = Field(None, description="Cloud native completion filter")
 
 
 class ApplicationSort(BaseModel):
@@ -164,8 +235,9 @@ class ApplicationSort(BaseModel):
     def validate_sort_field(cls, v):
         """Validate sort field."""
         allowed_fields = [
-            'updated_at', 'created_at', 'l2_id', 'app_name', 'supervision_year',
-            'overall_status', 'progress_percentage', 'responsible_team'
+            'updated_at', 'created_at', 'l2_id', 'app_name', 'ak_supervision_acceptance_year',
+            'current_status', 'progress_percentage', 'dev_team', 'ops_team',
+            'is_delayed', 'delay_days', 'app_tier'
         ]
         if v not in allowed_fields:
             raise ValueError(f'Sort field must be one of: {allowed_fields}')
@@ -184,6 +256,11 @@ class ApplicationStatistics(BaseModel):
     total_applications: int = Field(..., description="Total applications")
     by_status: List[dict] = Field(..., description="Applications grouped by status")
     by_target: List[dict] = Field(..., description="Applications grouped by target")
-    by_department: List[dict] = Field(..., description="Applications grouped by department")
+    by_dev_team: List[dict] = Field(..., description="Applications grouped by development team")
+    by_ops_team: List[dict] = Field(..., description="Applications grouped by operations team")
+    by_tier: List[dict] = Field(..., description="Applications grouped by tier")
+    ak_completed_count: int = Field(..., description="Number of AK completed applications")
+    cloud_native_completed_count: int = Field(..., description="Number of cloud native completed applications")
     completion_rate: float = Field(..., description="Overall completion rate")
     delayed_count: int = Field(..., description="Number of delayed applications")
+    average_delay_days: float = Field(..., description="Average delay days")

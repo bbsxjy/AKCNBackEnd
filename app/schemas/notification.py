@@ -57,7 +57,7 @@ class NotificationBase(BaseModel):
 
 class DelayWarningRequest(BaseModel):
     """Schema for delay warning notification request."""
-    application_id: int = Field(..., description="Application ID")
+    l2_id: int = Field(..., description="Application database ID")
     delay_days: int = Field(..., ge=1, description="Number of days delayed")
     recipients: List[EmailStr] = Field(..., description="Recipients email addresses")
     channels: Optional[List[NotificationChannel]] = Field(
@@ -86,6 +86,71 @@ class StatusChangeNotificationRequest(BaseModel):
     def validate_entity_type(cls, v):
         if v not in ['application', 'subtask']:
             raise ValueError('entity_type must be either application or subtask')
+        return v
+
+    @validator('old_status', 'new_status')
+    def validate_and_normalize_status(cls, v, values):
+        """Validate and normalize status based on entity type."""
+        if 'entity_type' not in values:
+            return v
+
+        # Define valid statuses for each entity type
+        if values['entity_type'] == 'application':
+            valid_statuses = [
+                "待启动", "需求进行中", "研发进行中", "技术上线中",
+                "业务上线中", "阻塞", "计划下线", "全部完成"
+            ]
+            status_mapping = {
+                '部署进行中': '技术上线中',
+                '中止': '计划下线',
+                '已完成': '全部完成',
+                '完成': '全部完成',
+                '未开始': '待启动',
+                'not_started': '待启动',
+                'requirement_in_progress': '需求进行中',
+                'dev_in_progress': '研发进行中',
+                'tech_online': '技术上线中',
+                'deployment_in_progress': '技术上线中',
+                'biz_online': '业务上线中',
+                'blocked': '阻塞',
+                'planned_offline': '计划下线',
+                'terminated': '计划下线',
+                'cancelled': '计划下线',
+                'completed': '全部完成'
+            }
+        else:  # subtask
+            valid_statuses = [
+                "未开始", "需求进行中", "研发进行中", "技术上线中",
+                "业务上线中", "阻塞", "计划下线", "子任务完成"
+            ]
+            status_mapping = {
+                '部署进行中': '技术上线中',
+                '中止': '计划下线',
+                '已完成': '子任务完成',
+                '完成': '子任务完成',
+                '待启动': '未开始',
+                'not_started': '未开始',
+                'requirement_in_progress': '需求进行中',
+                'dev_in_progress': '研发进行中',
+                'tech_online': '技术上线中',
+                'deployment_in_progress': '技术上线中',
+                'biz_online': '业务上线中',
+                'blocked': '阻塞',
+                'planned_offline': '计划下线',
+                'terminated': '计划下线',
+                'cancelled': '计划下线',
+                'completed': '子任务完成'
+            }
+
+        # Normalize status if in mapping
+        if v in status_mapping:
+            return status_mapping[v]
+
+        # Return as-is if already valid
+        if v in valid_statuses:
+            return v
+
+        # Allow any other status for backward compatibility
         return v
 
 

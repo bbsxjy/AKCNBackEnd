@@ -57,8 +57,9 @@ async def list_applications(
     l2_id: Optional[str] = Query(None, description="Filter by L2 ID"),
     app_name: Optional[str] = Query(None, description="Filter by application name"),
     status: Optional[str] = Query(None, description="Filter by status"),
-    department: Optional[str] = Query(None, description="Filter by department"),
-    year: Optional[int] = Query(None, ge=2025, le=2030, description="Filter by supervision year"),
+    dev_team: Optional[str] = Query(None, description="Filter by development team"),
+    ops_team: Optional[str] = Query(None, description="Filter by operations team"),
+    year: Optional[int] = Query(None, description="Filter by supervision year"),
     target: Optional[str] = Query(None, description="Filter by transformation target"),
     is_delayed: Optional[bool] = Query(None, description="Filter by delay status"),
     sort_by: str = Query("updated_at", description="Sort field"),
@@ -73,7 +74,8 @@ async def list_applications(
         l2_id=l2_id,
         app_name=app_name,
         status=status,
-        department=department,
+        dev_team=dev_team,
+        ops_team=ops_team,
         year=year,
         target=target,
         is_delayed=is_delayed
@@ -95,49 +97,13 @@ async def list_applications(
         total_pages = (total + limit - 1) // limit if total > 0 else 0
         page = (skip // limit) + 1
 
-        # Convert applications to response format without subtask counts for efficiency
-        items = []
-        for app in applications:
-            item_dict = {
-                "id": app.id,
-                "l2_id": app.l2_id,
-                "app_name": app.app_name,
-                "supervision_year": app.supervision_year,
-                "transformation_target": app.transformation_target,
-                "overall_status": app.overall_status,
-                "current_stage": app.current_stage,
-                "responsible_team": app.responsible_team,
-                "responsible_person": app.responsible_person,
-                "progress_percentage": app.progress_percentage,
-                "is_ak_completed": app.is_ak_completed,
-                "is_cloud_native_completed": app.is_cloud_native_completed,
-                "is_delayed": app.is_delayed,
-                "delay_days": app.delay_days,
-                "notes": app.notes,
-                "planned_requirement_date": app.planned_requirement_date,
-                "planned_release_date": app.planned_release_date,
-                "planned_tech_online_date": app.planned_tech_online_date,
-                "planned_biz_online_date": app.planned_biz_online_date,
-                "actual_requirement_date": app.actual_requirement_date,
-                "actual_release_date": app.actual_release_date,
-                "actual_tech_online_date": app.actual_tech_online_date,
-                "actual_biz_online_date": app.actual_biz_online_date,
-                "subtask_count": 0,  # Will be populated in detail view if needed
-                "completed_subtask_count": 0,  # Will be populated in detail view if needed
-                "completion_rate": 0.0,  # Will be populated in detail view if needed
-                "created_by": app.created_by,
-                "updated_by": app.updated_by,
-                "created_at": app.created_at,
-                "updated_at": app.updated_at
-            }
-            items.append(ApplicationResponse(**item_dict))
-
+        # ✅ 直接使用 ORM 对象，让 Pydantic 自动处理序列化
         return ApplicationListResponse(
             total=total,
             page=page,
             page_size=limit,
             total_pages=total_pages,
-            items=items
+            items=applications  # 直接传递 ORM 对象列表
         )
 
     except ValidationError as e:
@@ -184,7 +150,7 @@ async def get_application(
     current_user: User = Depends(get_current_user)
 ):
     """Get application by ID."""
-    db_application = await application_service.get_application(db=db, application_id=app_id)
+    db_application = await application_service.get_application(db=db, l2_id=app_id)
     if not db_application:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -220,7 +186,7 @@ async def update_application(
     try:
         db_application = await application_service.update_application(
             db=db,
-            application_id=app_id,
+            l2_id=app_id,
             application_data=application_data,
             updated_by=current_user.id
         )
@@ -244,7 +210,7 @@ async def delete_application(
     current_user: User = Depends(require_roles([UserRole.ADMIN, UserRole.MANAGER]))
 ):
     """Delete an application."""
-    success = await application_service.delete_application(db=db, application_id=app_id, deleted_by=current_user.id)
+    success = await application_service.delete_application(db=db, l2_id=app_id, deleted_by=current_user.id)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

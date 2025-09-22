@@ -44,46 +44,42 @@ class SubTaskService:
     ) -> SubTask:
         """Create a new subtask."""
 
-        # Verify application exists
+        # Verify application exists and get its name
         app_result = await db.execute(
-            select(Application).where(Application.id == subtask_data.application_id)
+            select(Application).where(Application.id == subtask_data.l2_id)
         )
-        if not app_result.scalar_one_or_none():
-            raise ValidationError(f"Application with ID {subtask_data.application_id} not found")
+        application = app_result.scalar_one_or_none()
+        if not application:
+            raise ValidationError(f"Application with ID {subtask_data.l2_id} not found")
 
-        # Check for duplicate module name within same application
+        # Check for duplicate version within same application
         existing = await db.execute(
             select(SubTask).where(
                 and_(
-                    SubTask.application_id == subtask_data.application_id,
-                    SubTask.module_name == subtask_data.module_name,
+                    SubTask.l2_id == subtask_data.l2_id,
+                    SubTask.version_name == subtask_data.version_name,
                     SubTask.sub_target == subtask_data.sub_target
                 )
             )
         )
         if existing.scalar_one_or_none():
             raise ValidationError(
-                f"SubTask with module '{subtask_data.module_name}' and target '{subtask_data.sub_target}' "
+                f"SubTask with version '{subtask_data.version_name}' and target '{subtask_data.sub_target}' "
                 f"already exists for this application"
             )
 
-        # Create new subtask
-        db_subtask = SubTask(
-            **subtask_data.model_dump(exclude={'planned_requirement_date', 'planned_release_date',
-                                               'planned_tech_online_date', 'planned_biz_online_date'}),
-            planned_requirement_date=subtask_data.planned_requirement_date,
-            planned_release_date=subtask_data.planned_release_date,
-            planned_tech_online_date=subtask_data.planned_tech_online_date,
-            planned_biz_online_date=subtask_data.planned_biz_online_date,
-            created_by=created_by,
-            updated_by=created_by
-        )
+        # Create new subtask with app_name from application
+        subtask_dict = subtask_data.model_dump()
+        subtask_dict['app_name'] = application.app_name  # Set app_name from application
+        subtask_dict['created_by'] = created_by
+        subtask_dict['updated_by'] = created_by
 
+        db_subtask = SubTask(**subtask_dict)
         db.add(db_subtask)
         await db.commit()
         await db.refresh(db_subtask)
 
-        # Create audit log for the new subtask
+        # Create audit log
         await self.audit_service.create_audit_log(
             db=db,
             table_name="sub_tasks",
@@ -139,7 +135,7 @@ class SubTaskService:
         await db.commit()
         await db.refresh(db_subtask)
 
-        # Create audit log for the subtask update
+        # Create audit log
         new_values = self._serialize_subtask(db_subtask)
         await self.audit_service.create_audit_log(
             db=db,
@@ -166,7 +162,7 @@ class SubTaskService:
         await db.delete(db_subtask)
         await db.commit()
 
-        # Create audit log for the subtask deletion
+        # Create audit log
         if deleted_by:
             await self.audit_service.create_audit_log(
                 db=db,
@@ -199,11 +195,14 @@ class SubTaskService:
         if filters:
             conditions = []
 
-            if filters.application_id:
-                conditions.append(SubTask.application_id == filters.application_id)
+            if filters.l2_id:
+                conditions.append(SubTask.l2_id == filters.l2_id)
 
-            if filters.module_name:
-                conditions.append(SubTask.module_name.ilike(f"%{filters.module_name}%"))
+            if filters.version_name:
+                conditions.append(SubTask.version_name.ilike(f"%{filters.version_name}%"))
+
+            if filters.app_name:
+                conditions.append(SubTask.app_name.ilike(f"%{filters.app_name}%"))
 
             if filters.sub_target:
                 conditions.append(SubTask.sub_target == filters.sub_target)
@@ -214,23 +213,19 @@ class SubTaskService:
             if filters.is_blocked is not None:
                 conditions.append(SubTask.is_blocked == filters.is_blocked)
 
-            if filters.assigned_to:
-                conditions.append(SubTask.assigned_to.ilike(f"%{filters.assigned_to}%"))
+            if filters.resource_applied is not None:
+                conditions.append(SubTask.resource_applied == filters.resource_applied)
 
-            if filters.reviewer:
-                conditions.append(SubTask.reviewer.ilike(f"%{filters.reviewer}%"))
+            if filters.ops_testing_status:
+                conditions.append(SubTask.ops_testing_status == filters.ops_testing_status)
 
-            if filters.priority:
-                conditions.append(SubTask.priority == filters.priority)
+            if filters.launch_check_status:
+                conditions.append(SubTask.launch_check_status == filters.launch_check_status)
 
-            if filters.version_name:
-                conditions.append(SubTask.version_name.ilike(f"%{filters.version_name}%"))
-
-            # Handle computed fields (requires subquery for overdue)
+            # Handle overdue filter
             if filters.is_overdue is not None:
                 today = date.today()
                 if filters.is_overdue:
-                    # Overdue: planned_biz_online_date < today AND not completed
                     conditions.append(
                         and_(
                             SubTask.planned_biz_online_date < today,
@@ -238,7 +233,6 @@ class SubTaskService:
                         )
                     )
                 else:
-                    # Not overdue: no planned date OR planned_biz_online_date >= today OR completed
                     conditions.append(
                         or_(
                             SubTask.planned_biz_online_date.is_(None),
@@ -278,7 +272,7 @@ class SubTaskService:
         """Get all subtasks for a specific application."""
         result = await db.execute(
             select(SubTask)
-            .where(SubTask.application_id == application_id)
+            .where(SubTask.l2_id == application_id)
             .order_by(desc(SubTask.updated_at))
         )
         return result.scalars().all()
@@ -303,13 +297,6 @@ class SubTaskService:
             .group_by(SubTask.sub_target)
         )
         by_target = [{"target": target, "count": count} for target, count in target_result.all()]
-
-        # SubTasks by priority
-        priority_result = await db.execute(
-            select(SubTask.priority, func.count(SubTask.id))
-            .group_by(SubTask.priority)
-        )
-        by_priority = [{"priority": priority, "count": count} for priority, count in priority_result.all()]
 
         # Completion rate
         completed_result = await db.execute(
@@ -347,7 +334,6 @@ class SubTaskService:
             total_subtasks=total_subtasks,
             by_status=by_status,
             by_target=by_target,
-            by_priority=by_priority,
             completion_rate=completion_rate,
             blocked_count=blocked_count,
             overdue_count=overdue_count,
@@ -427,13 +413,9 @@ class SubTaskService:
         if progress_update.task_status:
             subtask.task_status = progress_update.task_status
 
-        # Update actual hours if provided
-        if progress_update.actual_hours is not None:
-            subtask.actual_hours = progress_update.actual_hours
-
-        # Update technical notes if provided
-        if progress_update.technical_notes:
-            subtask.technical_notes = progress_update.technical_notes
+        # Update notes if provided
+        if progress_update.notes:
+            subtask.notes = progress_update.notes
 
         # Auto-determine status based on progress if not explicitly set
         if not progress_update.task_status:
@@ -477,16 +459,6 @@ class SubTaskService:
         )
         return result.scalars().all()
 
-    async def get_subtasks_by_assignee(self, db: AsyncSession, assignee: str) -> List[SubTask]:
-        """Get all subtasks assigned to a specific person."""
-        result = await db.execute(
-            select(SubTask)
-            .options(selectinload(SubTask.application))
-            .where(SubTask.assigned_to == assignee)
-            .order_by(desc(SubTask.updated_at))
-        )
-        return result.scalars().all()
-
     async def get_subtasks_by_status(self, db: AsyncSession, status: SubTaskStatus) -> List[SubTask]:
         """Get all subtasks with a specific status."""
         result = await db.execute(
@@ -503,7 +475,7 @@ class SubTaskService:
         subtask_id: int,
         new_application_id: int,
         created_by: int,
-        module_name_suffix: str = "_clone"
+        version_suffix: str = "_clone"
     ) -> Optional[SubTask]:
         """Clone a subtask to another application."""
         # Get source subtask
@@ -511,32 +483,29 @@ class SubTaskService:
         if not source_subtask:
             return None
 
-        # Verify target application exists
+        # Verify target application exists and get its name
         app_result = await db.execute(
             select(Application).where(Application.id == new_application_id)
         )
-        if not app_result.scalar_one_or_none():
+        target_app = app_result.scalar_one_or_none()
+        if not target_app:
             raise ValidationError(f"Target application with ID {new_application_id} not found")
 
         # Create clone
         clone_data = {
-            'application_id': new_application_id,
-            'module_name': source_subtask.module_name + module_name_suffix,
+            'l2_id': new_application_id,
             'sub_target': source_subtask.sub_target,
-            'version_name': source_subtask.version_name,
+            'version_name': (source_subtask.version_name or "") + version_suffix,
             'task_status': SubTaskStatus.NOT_STARTED,
             'progress_percentage': 0,
             'is_blocked': False,
             'block_reason': None,
-            'requirements': source_subtask.requirements,
-            'technical_notes': source_subtask.technical_notes,
-            'test_notes': source_subtask.test_notes,
-            'deployment_notes': source_subtask.deployment_notes,
-            'priority': source_subtask.priority,
-            'estimated_hours': source_subtask.estimated_hours,
-            'actual_hours': None,
-            'assigned_to': None,
-            'reviewer': source_subtask.reviewer,
+            'app_name': target_app.app_name,
+            'resource_applied': False,
+            'ops_requirement_submitted': None,
+            'ops_testing_status': None,
+            'launch_check_status': None,
+            'notes': source_subtask.notes,
             'planned_requirement_date': source_subtask.planned_requirement_date,
             'planned_release_date': source_subtask.planned_release_date,
             'planned_tech_online_date': source_subtask.planned_tech_online_date,
@@ -551,54 +520,38 @@ class SubTaskService:
         await db.refresh(db_subtask)
         return db_subtask
 
-    async def _auto_update_progress_by_status(self, subtask: SubTask, status: SubTaskStatus):
+    async def _auto_update_progress_by_status(self, subtask: SubTask, status: str):
         """Auto-update progress percentage based on status."""
         status_progress_map = {
-            SubTaskStatus.NOT_STARTED: 0,
-            SubTaskStatus.DEV_IN_PROGRESS: 30,
-            SubTaskStatus.TESTING: 60,
-            SubTaskStatus.DEPLOYMENT_READY: 80,
-            SubTaskStatus.COMPLETED: 100,
-            SubTaskStatus.BLOCKED: None  # Don't change progress for blocked
+            '未开始': 0,
+            '需求进行中': 10,
+            '研发进行中': 30,
+            '技术上线中': 60,
+            '业务上线中': 80,
+            '子任务完成': 100,
+            '阻塞': None,  # Don't change progress for blocked
+            '计划下线': None  # Don't change progress for offline
         }
 
         if status in status_progress_map and status_progress_map[status] is not None:
             subtask.progress_percentage = status_progress_map[status]
 
-    async def get_subtask_workload_summary(self, db: AsyncSession, assignee: Optional[str] = None) -> Dict[str, Any]:
-        """Get workload summary for subtasks."""
-        query = select(SubTask)
-
-        if assignee:
-            query = query.where(SubTask.assigned_to == assignee)
-
-        result = await db.execute(query)
+    async def get_subtask_workload_summary(self, db: AsyncSession) -> Dict[str, Any]:
+        """Get simplified workload summary for subtasks."""
+        result = await db.execute(select(SubTask))
         subtasks = result.scalars().all()
-
-        total_estimated = sum(st.estimated_hours or 0 for st in subtasks)
-        total_actual = sum(st.actual_hours or 0 for st in subtasks)
-        total_remaining_estimated = sum(
-            ((st.estimated_hours or 0) * (100 - st.progress_percentage) / 100)
-            for st in subtasks if st.task_status != SubTaskStatus.COMPLETED
-        )
 
         by_status = {}
         for subtask in subtasks:
             status = subtask.task_status
             if status not in by_status:
-                by_status[status] = {'count': 0, 'estimated_hours': 0, 'actual_hours': 0}
+                by_status[status] = {'count': 0}
             by_status[status]['count'] += 1
-            by_status[status]['estimated_hours'] += subtask.estimated_hours or 0
-            by_status[status]['actual_hours'] += subtask.actual_hours or 0
 
         return {
             'total_subtasks': len(subtasks),
-            'total_estimated_hours': total_estimated,
-            'total_actual_hours': total_actual,
-            'remaining_estimated_hours': total_remaining_estimated,
-            'efficiency_rate': (total_estimated / total_actual * 100) if total_actual > 0 else 0,
             'by_status': by_status,
-            'assignee': assignee
+            'average_progress': sum(st.progress_percentage for st in subtasks) / len(subtasks) if subtasks else 0
         }
 
     def _serialize_subtask(self, subtask: SubTask) -> Dict[str, Any]:

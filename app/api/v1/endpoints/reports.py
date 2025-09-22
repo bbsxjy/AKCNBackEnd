@@ -48,7 +48,7 @@ async def get_progress_summary_report(
     start_date: Optional[date] = Query(None, description="Start date"),
     end_date: Optional[date] = Query(None, description="End date"),
     supervision_year: Optional[int] = Query(None, description="Supervision year"),
-    responsible_team: Optional[str] = Query(None, description="Responsible team"),
+    dev_team: Optional[str] = Query(None, description="Development team"),
     db: AsyncSession = Depends(get_db)
 ):
     """Get progress summary report via GET request."""
@@ -61,19 +61,19 @@ async def get_progress_summary_report(
         # Query applications
         query = select(Application)
         if supervision_year:
-            query = query.where(Application.supervision_year == supervision_year)
-        if responsible_team:
-            query = query.where(Application.responsible_team == responsible_team)
+            query = query.where(Application.ak_supervision_acceptance_year == supervision_year)
+        if dev_team:
+            query = query.where(Application.dev_team == dev_team)
 
         result = await db.execute(query)
         applications = result.scalars().all()
 
         # Calculate statistics
         total = len(applications)
-        completed = sum(1 for app in applications if app.overall_status == ApplicationStatus.COMPLETED)
-        in_progress = sum(1 for app in applications if app.overall_status == ApplicationStatus.DEV_IN_PROGRESS)
-        not_started = sum(1 for app in applications if app.overall_status == ApplicationStatus.NOT_STARTED)
-        biz_online = sum(1 for app in applications if app.overall_status == ApplicationStatus.BIZ_ONLINE)
+        completed = sum(1 for app in applications if app.current_status == ApplicationStatus.COMPLETED)
+        in_progress = sum(1 for app in applications if app.current_status == ApplicationStatus.DEV_IN_PROGRESS)
+        not_started = sum(1 for app in applications if app.current_status == ApplicationStatus.NOT_STARTED)
+        biz_online = sum(1 for app in applications if app.current_status == ApplicationStatus.BIZ_ONLINE)
         tech_online = 0  # TECH_ONLINE status doesn't exist in the enum
         delayed = sum(1 for app in applications if app.is_delayed)
 
@@ -83,13 +83,13 @@ async def get_progress_summary_report(
         # Group by status
         status_counts = {}
         for app in applications:
-            status = app.overall_status.value if hasattr(app.overall_status, 'value') else str(app.overall_status)
+            status = app.current_status.value if hasattr(app.current_status, 'value') else str(app.current_status)
             status_counts[status] = status_counts.get(status, 0) + 1
 
         # Group by team
         team_stats = {}
         for app in applications:
-            team = app.responsible_team
+            team = app.dev_team
             if team not in team_stats:
                 team_stats[team] = {"count": 0, "total_progress": 0}
             team_stats[team]["count"] += 1
@@ -125,7 +125,7 @@ async def get_progress_summary_report(
                 "start_date": start_date.isoformat() if start_date else None,
                 "end_date": end_date.isoformat() if end_date else None,
                 "supervision_year": supervision_year,
-                "responsible_team": responsible_team
+                "dev_team": dev_team
             }
         }
 
@@ -184,7 +184,7 @@ async def generate_progress_summary_report(
         report_data = await report_service.generate_progress_summary_report(
             db=db,
             supervision_year=request.supervision_year,
-            responsible_team=request.responsible_team,
+            dev_team=request.dev_team,
             transformation_target=request.transformation_target,
             include_details=request.include_details
         )
@@ -264,7 +264,7 @@ async def generate_delayed_projects_report(
         report_data = await report_service.generate_delayed_projects_report(
             db=db,
             supervision_year=request.supervision_year,
-            responsible_team=request.responsible_team,
+            dev_team=request.dev_team,
             severity_threshold=request.severity_threshold
         )
 

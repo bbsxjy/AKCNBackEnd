@@ -4,12 +4,41 @@ Calculation engine related Pydantic schemas
 
 from typing import List, Dict, Any, Optional
 from datetime import date, datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
+
+
+# Define valid statuses as constants
+VALID_APPLICATION_STATUSES = [
+    "待启动", "需求进行中", "研发进行中", "技术上线中",
+    "业务上线中", "阻塞", "计划下线", "全部完成"
+]
+
+VALID_SUBTASK_STATUSES = [
+    "未开始", "需求进行中", "研发进行中", "技术上线中",
+    "业务上线中", "阻塞", "计划下线", "子任务完成"
+]
+
+# Status mappings for normalization
+APPLICATION_STATUS_MAPPING = {
+    '部署进行中': '技术上线中',
+    '中止': '计划下线',
+    '已完成': '全部完成',
+    '完成': '全部完成',
+    '未开始': '待启动'
+}
+
+SUBTASK_STATUS_MAPPING = {
+    '部署进行中': '技术上线中',
+    '中止': '计划下线',
+    '已完成': '子任务完成',
+    '完成': '子任务完成',
+    '待启动': '未开始'
+}
 
 
 class ApplicationMetrics(BaseModel):
     """Schema for application metrics."""
-    application_id: int = Field(..., description="Application ID")
+    l2_id: int = Field(..., description="Application database ID")
     application_name: str = Field(..., description="Application name")
     progress_percentage: int = Field(..., description="Progress percentage")
     overall_status: str = Field(..., description="Overall status")
@@ -19,6 +48,20 @@ class ApplicationMetrics(BaseModel):
     completed_subtasks: int = Field(..., description="Completed subtasks")
     blocked_subtasks: int = Field(..., description="Blocked subtasks")
     overdue_subtasks: int = Field(..., description="Overdue subtasks")
+
+    @validator('overall_status')
+    def validate_and_normalize_status(cls, v):
+        """Validate and normalize application status."""
+        # Apply mapping if needed
+        if v in APPLICATION_STATUS_MAPPING:
+            v = APPLICATION_STATUS_MAPPING[v]
+
+        # Validate status
+        if v not in VALID_APPLICATION_STATUSES:
+            # Allow for backward compatibility but log warning
+            pass
+
+        return v
 
 
 class ProjectMetrics(BaseModel):
@@ -31,7 +74,7 @@ class ProjectMetrics(BaseModel):
 
 class CompletionPrediction(BaseModel):
     """Schema for completion date predictions."""
-    application_id: int = Field(..., description="Application ID")
+    l2_id: int = Field(..., description="Application database ID")
     prediction_available: bool = Field(..., description="Is prediction available")
     reason: Optional[str] = Field(None, description="Reason if prediction not available")
     current_progress: Optional[float] = Field(None, description="Current progress percentage")
@@ -46,32 +89,28 @@ class CompletionPrediction(BaseModel):
 
 class BlockedSubTask(BaseModel):
     """Schema for blocked subtask information."""
-    application_id: int = Field(..., description="Application ID")
+    l2_id: int = Field(..., description="Application database ID")
     application_name: str = Field(..., description="Application name")
     subtask_id: int = Field(..., description="SubTask ID")
-    module_name: str = Field(..., description="Module name")
+    version_name: str = Field(..., description="Version name")
     block_reason: Optional[str] = Field(None, description="Block reason")
     days_blocked: int = Field(..., description="Days blocked")
-    assigned_to: Optional[str] = Field(None, description="Assigned person")
-    priority: int = Field(..., description="Priority level")
 
 
 class OverdueSubTask(BaseModel):
     """Schema for overdue subtask information."""
-    application_id: int = Field(..., description="Application ID")
+    l2_id: int = Field(..., description="Application database ID")
     application_name: str = Field(..., description="Application name")
     subtask_id: int = Field(..., description="SubTask ID")
-    module_name: str = Field(..., description="Module name")
+    version_name: str = Field(..., description="Version name")
     days_overdue: int = Field(..., description="Days overdue")
-    assigned_to: Optional[str] = Field(None, description="Assigned person")
-    priority: int = Field(..., description="Priority level")
     planned_date: str = Field(..., description="Planned completion date")
     progress: int = Field(..., description="Current progress percentage")
 
 
 class HighRiskApplication(BaseModel):
     """Schema for high-risk application information."""
-    application_id: int = Field(..., description="Application ID")
+    l2_id: int = Field(..., description="Application database ID")
     application_name: str = Field(..., description="Application name")
     risk_score: float = Field(..., description="Risk score")
     progress: int = Field(..., description="Progress percentage")
@@ -82,10 +121,17 @@ class HighRiskApplication(BaseModel):
     blocked_subtasks: int = Field(..., description="Blocked subtasks")
     overdue_subtasks: int = Field(..., description="Overdue subtasks")
 
+    @validator('status')
+    def validate_and_normalize_status(cls, v):
+        """Validate and normalize application status."""
+        if v in APPLICATION_STATUS_MAPPING:
+            v = APPLICATION_STATUS_MAPPING[v]
+        return v
+
 
 class TimelineRisk(BaseModel):
     """Schema for timeline risk information."""
-    application_id: int = Field(..., description="Application ID")
+    l2_id: int = Field(..., description="Application database ID")
     application_name: str = Field(..., description="Application name")
     days_until_deadline: int = Field(..., description="Days until deadline")
     current_progress: int = Field(..., description="Current progress percentage")
@@ -116,7 +162,7 @@ class BottleneckAnalysis(BaseModel):
 
 class RecalculationRequest(BaseModel):
     """Schema for recalculation requests."""
-    application_ids: Optional[List[int]] = Field(None, description="Specific application IDs to recalculate")
+    l2_ids: Optional[List[int]] = Field(None, description="Specific application database IDs to recalculate")
     recalculate_all: bool = Field(False, description="Recalculate all applications")
     update_predictions: bool = Field(True, description="Update completion predictions")
     force_refresh: bool = Field(False, description="Force refresh cached data")
@@ -133,13 +179,25 @@ class RecalculationResult(BaseModel):
 
 class ApplicationStatusUpdate(BaseModel):
     """Schema for application status updates."""
-    application_id: int = Field(..., description="Application ID")
+    l2_id: int = Field(..., description="Application database ID")
     old_status: str = Field(..., description="Previous status")
     new_status: str = Field(..., description="New status")
     old_progress: int = Field(..., description="Previous progress")
     new_progress: int = Field(..., description="New progress")
     changed_at: datetime = Field(..., description="Change timestamp")
     trigger: str = Field(..., description="What triggered the change")
+
+    @validator('old_status', 'new_status')
+    def validate_and_normalize_status(cls, v):
+        """Validate and normalize status values."""
+        if v in APPLICATION_STATUS_MAPPING:
+            v = APPLICATION_STATUS_MAPPING[v]
+
+        if v not in VALID_APPLICATION_STATUSES:
+            # Log warning but allow for backward compatibility
+            pass
+
+        return v
 
 
 class CalculationEngineStats(BaseModel):
@@ -181,7 +239,7 @@ class Alert(BaseModel):
     message: str = Field(..., description="Alert message")
     current_value: float = Field(..., description="Current metric value")
     threshold_value: float = Field(..., description="Threshold value")
-    application_id: Optional[int] = Field(None, description="Related application ID")
+    l2_id: Optional[int] = Field(None, description="Related application database ID")
     subtask_id: Optional[int] = Field(None, description="Related subtask ID")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Alert creation time")
     acknowledged: bool = Field(False, description="Is alert acknowledged")
@@ -211,3 +269,30 @@ class EfficiencyReport(BaseModel):
     period_start: date = Field(..., description="Report period start")
     period_end: date = Field(..., description="Report period end")
     generated_at: datetime = Field(default_factory=datetime.utcnow, description="Report generation time")
+
+
+# Helper functions for status validation
+def normalize_application_status(status: str) -> str:
+    """Normalize application status value."""
+    if status in APPLICATION_STATUS_MAPPING:
+        return APPLICATION_STATUS_MAPPING[status]
+    return status
+
+
+def normalize_subtask_status(status: str) -> str:
+    """Normalize subtask status value."""
+    if status in SUBTASK_STATUS_MAPPING:
+        return SUBTASK_STATUS_MAPPING[status]
+    return status
+
+
+def is_valid_application_status(status: str) -> bool:
+    """Check if application status is valid."""
+    normalized = normalize_application_status(status)
+    return normalized in VALID_APPLICATION_STATUSES
+
+
+def is_valid_subtask_status(status: str) -> bool:
+    """Check if subtask status is valid."""
+    normalized = normalize_subtask_status(status)
+    return normalized in VALID_SUBTASK_STATUSES

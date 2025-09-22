@@ -124,15 +124,15 @@ class CalculationEngine:
             await self._calculate_application_metrics(app)
 
             # Count by status
-            status = app.overall_status
+            status = app.current_status
             metrics["applications"]["by_status"][status] = metrics["applications"]["by_status"].get(status, 0) + 1
 
             # Count by target
-            target = app.transformation_target
+            target = app.overall_transformation_target
             metrics["applications"]["by_target"][target] = metrics["applications"]["by_target"].get(target, 0) + 1
 
             # Count completed and delayed
-            if app.overall_status == ApplicationStatus.COMPLETED:
+            if app.current_status == ApplicationStatus.COMPLETED:
                 completed_apps += 1
             if app.is_delayed:
                 delayed_apps += 1
@@ -323,11 +323,9 @@ class CalculationEngine:
                         "application_id": app.id,
                         "application_name": app.app_name,
                         "subtask_id": subtask.id,
-                        "module_name": subtask.module_name,
+                        "version_name": subtask.version_name,
                         "block_reason": subtask.block_reason,
-                        "days_blocked": (datetime.now(timezone.utc).date() - subtask.updated_at.date()).days,
-                        "assigned_to": subtask.assigned_to,
-                        "priority": subtask.priority
+                        "days_blocked": (datetime.now(timezone.utc).date() - subtask.updated_at.date()).days
                     })
                     app_risk_score += subtask.priority * 2
 
@@ -340,10 +338,8 @@ class CalculationEngine:
                         "application_id": app.id,
                         "application_name": app.app_name,
                         "subtask_id": subtask.id,
-                        "module_name": subtask.module_name,
+                        "version_name": subtask.version_name,
                         "days_overdue": days_overdue,
-                        "assigned_to": subtask.assigned_to,
-                        "priority": subtask.priority,
                         "planned_date": subtask.planned_biz_online_date.isoformat(),
                         "progress": subtask.progress_percentage
                     })
@@ -394,7 +390,7 @@ class CalculationEngine:
                     "application_name": app.app_name,
                     "risk_score": app_risk_score,
                     "progress": app.progress_percentage,
-                    "status": app.overall_status,
+                    "status": app.current_status,
                     "is_delayed": app.is_delayed,
                     "delay_days": app.delay_days,
                     "total_subtasks": len(app.subtasks),
@@ -431,8 +427,8 @@ class CalculationEngine:
             bottlenecks["recommendations"].append("Applications at timeline risk need immediate attention and possible scope adjustment")
 
         # Sort by severity
-        bottlenecks["blocked_subtasks"].sort(key=lambda x: (x["priority"], -x["days_blocked"]), reverse=True)
-        bottlenecks["overdue_subtasks"].sort(key=lambda x: (x["priority"], -x["days_overdue"]), reverse=True)
+        bottlenecks["blocked_subtasks"].sort(key=lambda x: -x["days_blocked"], reverse=True)
+        bottlenecks["overdue_subtasks"].sort(key=lambda x: -x["days_overdue"], reverse=True)
         bottlenecks["high_risk_applications"].sort(key=lambda x: x["risk_score"], reverse=True)
 
         return bottlenecks
@@ -460,13 +456,13 @@ class CalculationEngine:
 
         # Determine overall status
         if completion_rate == 0:
-            application.overall_status = ApplicationStatus.NOT_STARTED
+            application.current_status = ApplicationStatus.NOT_STARTED
         elif completion_rate == 1.0:
-            application.overall_status = ApplicationStatus.COMPLETED
+            application.current_status = ApplicationStatus.COMPLETED
         elif any(st.task_status == "业务上线中" for st in subtasks):
-            application.overall_status = ApplicationStatus.BIZ_ONLINE
+            application.current_status = ApplicationStatus.BIZ_ONLINE
         else:
-            application.overall_status = ApplicationStatus.DEV_IN_PROGRESS
+            application.current_status = ApplicationStatus.DEV_IN_PROGRESS
 
         # Update transformation target completion
         ak_subtasks = [st for st in subtasks if st.sub_target == "AK"]
@@ -481,7 +477,7 @@ class CalculationEngine:
         application.delay_days = 0
 
         if application.planned_biz_online_date:
-            if application.overall_status == ApplicationStatus.COMPLETED:
+            if application.current_status == ApplicationStatus.COMPLETED:
                 if application.actual_biz_online_date and application.actual_biz_online_date > application.planned_biz_online_date:
                     application.is_delayed = True
                     application.delay_days = (application.actual_biz_online_date - application.planned_biz_online_date).days

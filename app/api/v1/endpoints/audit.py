@@ -156,10 +156,17 @@ async def get_record_history(
             record_id=record_id
         )
 
+        # Return empty history instead of 404 if no audit records exist
         if not history:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No audit history found for {table_name} record {record_id}"
+            return RecordHistoryResponse(
+                table_name=table_name,
+                record_id=record_id,
+                history=[],
+                total_operations=0,
+                created_at=None,
+                last_modified_at=None,
+                created_by=None,
+                last_modified_by=None
             )
 
         # Transform history

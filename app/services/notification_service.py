@@ -89,14 +89,14 @@ class NotificationService:
             "application": {
                 "l2_id": application.l2_id,
                 "name": application.app_name,
-                "responsible_team": application.responsible_team,
-                "responsible_person": application.responsible_person
+                "responsible_team": application.dev_team,
+                "responsible_person": application.dev_owner
             },
             "delay_info": {
                 "delay_days": delay_days,
                 "planned_date": application.planned_biz_online_date.isoformat() if application.planned_biz_online_date else None,
                 "current_progress": application.progress_percentage,
-                "current_status": application.overall_status
+                "current_status": application.current_status
             },
             "severity": self._calculate_delay_severity(delay_days),
             "recommendations": self._generate_delay_recommendations(application, delay_days)
@@ -790,7 +790,7 @@ class NotificationService:
             select(Application).where(
                 and_(
                     Application.planned_biz_online_date < today,
-                    Application.overall_status != ApplicationStatus.COMPLETED
+                    Application.current_status != ApplicationStatus.COMPLETED
                 )
             )
         )
@@ -926,11 +926,11 @@ class NotificationService:
         recipients = []
 
         # Add responsible person
-        if application.responsible_person:
-            recipients.append(f"{application.responsible_person}@example.com")
+        if application.dev_owner:
+            recipients.append(f"{application.dev_owner}@example.com")
 
         # Add team manager (mock)
-        recipients.append(f"{application.responsible_team}_manager@example.com")
+        recipients.append(f"{application.dev_team}_manager@example.com")
 
         # Add system admin
         recipients.append("admin@example.com")
@@ -943,11 +943,11 @@ class NotificationService:
         recipients = []
 
         # Add responsible person
-        if application.responsible_person:
-            recipients.append(f"{application.responsible_person}@example.com")
+        if application.dev_owner:
+            recipients.append(f"{application.dev_owner}@example.com")
 
         # Add stakeholders (mock)
-        recipients.append(f"{application.responsible_team}@example.com")
+        recipients.append(f"{application.dev_team}@example.com")
 
         return recipients
 

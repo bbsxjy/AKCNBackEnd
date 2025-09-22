@@ -146,7 +146,7 @@ async def recalculate_single_application(
             application_id=application.id,
             application_name=application.app_name,
             progress_percentage=application.progress_percentage,
-            overall_status=application.overall_status,
+            overall_status=application.current_status,
             is_delayed=application.is_delayed,
             delay_days=application.delay_days,
             total_subtasks=len(application.subtasks),

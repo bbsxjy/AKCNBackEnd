@@ -86,10 +86,10 @@ async def send_delay_warning(
         raise HTTPException(status_code=404, detail="应用不存在")
     
     # Check team permission
-    if current_user.role == "Manager" and application.responsible_team != current_user.team:
+    if current_user.role == "Manager" and application.dev_team != current_user.team:
         raise HTTPException(status_code=403, detail="只能发送本团队应用的通知")
     
-    if current_user.role == "Editor" and application.responsible_person != current_user.full_name:
+    if current_user.role == "Editor" and application.dev_owner != current_user.full_name:
         raise HTTPException(status_code=403, detail="只能发送负责应用的通知")
     
     # Send notification
@@ -489,7 +489,7 @@ async def list_notification_templates(
             "template_type": NotificationType.DELAY_WARNING,
             "subject_template": "延期预警: {{ app_name }} 已延期 {{ delay_days }} 天",
             "body_template": "<h2>延期预警通知</h2><p>应用 {{ app_name }} 已延期...</p>",
-            "variables": ["app_name", "delay_days", "responsible_team"],
+            "variables": ["app_name", "delay_days", "dev_team"],
             "channels": [NotificationChannel.EMAIL, NotificationChannel.IN_APP],
             "is_active": True,
             "created_at": datetime.utcnow(),

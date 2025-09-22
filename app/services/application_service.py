@@ -62,7 +62,7 @@ class ApplicationService:
             planned_release_date=application_data.planned_release_date,
             planned_tech_online_date=application_data.planned_tech_online_date,
             planned_biz_online_date=application_data.planned_biz_online_date,
-            overall_status=initial_status,
+            current_status=initial_status,
             is_ak_completed=is_ak_completed,
             is_cloud_native_completed=is_cloud_native_completed,
             progress_percentage=0,
@@ -90,11 +90,11 @@ class ApplicationService:
 
         return db_application
 
-    async def get_application(self, db: AsyncSession, application_id: int) -> Optional[Application]:
+    async def get_application(self, db: AsyncSession, l2_id: int) -> Optional[Application]:
         """Get application by ID."""
         result = await db.execute(
             select(Application)
-            .where(Application.id == application_id)
+            .where(Application.id == l2_id)
         )
         return result.scalar_one_or_none()
 
@@ -110,14 +110,14 @@ class ApplicationService:
     async def update_application(
         self,
         db: AsyncSession,
-        application_id: int,
+        l2_id: int,
         application_data: ApplicationUpdate,
         updated_by: int
     ) -> Optional[Application]:
         """Update an application."""
 
         # Get existing application
-        db_application = await self.get_application(db, application_id)
+        db_application = await self.get_application(db, l2_id)
         if not db_application:
             return None
 
@@ -154,9 +154,9 @@ class ApplicationService:
 
         return db_application
 
-    async def delete_application(self, db: AsyncSession, application_id: int, deleted_by: int = None) -> bool:
+    async def delete_application(self, db: AsyncSession, l2_id: int, deleted_by: int = None) -> bool:
         """Delete an application."""
-        db_application = await self.get_application(db, application_id)
+        db_application = await self.get_application(db, l2_id)
         if not db_application:
             return False
 
@@ -171,7 +171,7 @@ class ApplicationService:
             await self.audit_service.create_audit_log(
                 db=db,
                 table_name="applications",
-                record_id=application_id,
+                record_id=l2_id,
                 operation=AuditOperation.DELETE,
                 old_values=old_values,
                 new_values=None,
@@ -206,19 +206,28 @@ class ApplicationService:
                 conditions.append(Application.app_name.ilike(f"%{filters.app_name}%"))
 
             if filters.status:
-                conditions.append(Application.overall_status == filters.status)
+                conditions.append(Application.current_status == filters.status)
 
-            if filters.department:
-                conditions.append(Application.responsible_team.ilike(f"%{filters.department}%"))
+            if filters.dev_team:
+                conditions.append(Application.dev_team.ilike(f"%{filters.dev_team}%"))
+
+            if filters.ops_team:
+                conditions.append(Application.ops_team.ilike(f"%{filters.ops_team}%"))
 
             if filters.year:
-                conditions.append(Application.supervision_year == filters.year)
+                conditions.append(Application.ak_supervision_acceptance_year == filters.year)
 
             if filters.target:
-                conditions.append(Application.transformation_target == filters.target)
+                conditions.append(Application.overall_transformation_target == filters.target)
 
             if filters.is_delayed is not None:
                 conditions.append(Application.is_delayed == filters.is_delayed)
+
+            if filters.is_ak_completed is not None:
+                conditions.append(Application.is_ak_completed == filters.is_ak_completed)
+
+            if filters.is_cloud_native_completed is not None:
+                conditions.append(Application.is_cloud_native_completed == filters.is_cloud_native_completed)
 
             if conditions:
                 query = query.where(and_(*conditions))
@@ -256,29 +265,29 @@ class ApplicationService:
 
         # Applications by status
         status_result = await db.execute(
-            select(Application.overall_status, func.count(Application.id))
-            .group_by(Application.overall_status)
+            select(Application.current_status, func.count(Application.id))
+            .group_by(Application.current_status)
         )
         by_status = [{"status": status, "count": count} for status, count in status_result.all()]
 
         # Applications by target
         target_result = await db.execute(
-            select(Application.transformation_target, func.count(Application.id))
-            .group_by(Application.transformation_target)
+            select(Application.overall_transformation_target, func.count(Application.id))
+            .group_by(Application.overall_transformation_target)
         )
         by_target = [{"target": target, "count": count} for target, count in target_result.all()]
 
         # Applications by department
         dept_result = await db.execute(
-            select(Application.responsible_team, func.count(Application.id))
-            .group_by(Application.responsible_team)
+            select(Application.dev_team, func.count(Application.id))
+            .group_by(Application.dev_team)
         )
         by_department = [{"department": dept, "count": count} for dept, count in dept_result.all()]
 
         # Completion rate
         completed_result = await db.execute(
             select(func.count(Application.id))
-            .where(Application.overall_status == ApplicationStatus.COMPLETED)
+            .where(Application.current_status == ApplicationStatus.COMPLETED)
         )
         completed_count = completed_result.scalar()
         completion_rate = (completed_count / total_applications * 100) if total_applications > 0 else 0
@@ -306,7 +315,7 @@ class ApplicationService:
         from app.models.subtask import SubTask
 
         subtasks_result = await db.execute(
-            select(SubTask).where(SubTask.application_id == application.id)
+            select(SubTask).where(SubTask.l2_id == application.id)
         )
         subtasks = subtasks_result.scalars().all()
 
@@ -314,25 +323,22 @@ class ApplicationService:
 
         if total_subtasks == 0:
             # No subtasks - status based on dates
-            application.progress_percentage = 0
-            application.overall_status = ApplicationStatus.NOT_STARTED
+            application.current_status = ApplicationStatus.NOT_STARTED
             return
 
         # Count completed subtasks
         completed_subtasks = sum(1 for st in subtasks if st.task_status == "已完成")
 
-        # Calculate progress percentage
-        application.progress_percentage = int((completed_subtasks / total_subtasks) * 100)
 
         # Determine overall status
         if completed_subtasks == 0:
-            application.overall_status = ApplicationStatus.NOT_STARTED
+            application.current_status = ApplicationStatus.NOT_STARTED
         elif completed_subtasks == total_subtasks:
-            application.overall_status = ApplicationStatus.COMPLETED
+            application.current_status = ApplicationStatus.COMPLETED
         elif any(st.task_status == "业务上线中" for st in subtasks):
-            application.overall_status = ApplicationStatus.BIZ_ONLINE
+            application.current_status = ApplicationStatus.BIZ_ONLINE
         else:
-            application.overall_status = ApplicationStatus.DEV_IN_PROGRESS
+            application.current_status = ApplicationStatus.DEV_IN_PROGRESS
 
         # Update transformation target completion flags
         ak_subtasks = [st for st in subtasks if st.sub_target == "AK"]
@@ -347,7 +353,7 @@ class ApplicationService:
         application.delay_days = 0
 
         if application.planned_biz_online_date:
-            if application.overall_status == ApplicationStatus.COMPLETED:
+            if application.current_status == ApplicationStatus.COMPLETED:
                 if application.actual_biz_online_date and application.actual_biz_online_date > application.planned_biz_online_date:
                     application.is_delayed = True
                     application.delay_days = (application.actual_biz_online_date - application.planned_biz_online_date).days
@@ -373,7 +379,7 @@ class ApplicationService:
         result = await db.execute(
             select(Application)
             .options(selectinload(Application.subtasks))
-            .where(Application.responsible_team == team)
+            .where(Application.dev_team == team)
             .order_by(desc(Application.updated_at))
         )
         return result.scalars().all()

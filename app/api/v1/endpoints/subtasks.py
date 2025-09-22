@@ -46,16 +46,16 @@ async def create_subtask(
 async def list_subtasks(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(100, ge=1, le=1000, description="Number of records to return"),
-    application_id: Optional[int] = Query(None, description="Filter by application ID"),
-    module_name: Optional[str] = Query(None, description="Filter by module name"),
+    l2_id: Optional[int] = Query(None, description="Filter by application ID"),
+    app_name: Optional[str] = Query(None, description="Filter by application name"),
     sub_target: Optional[str] = Query(None, description="Filter by sub target"),
+    version_name: Optional[str] = Query(None, description="Filter by version name"),
     task_status: Optional[SubTaskStatus] = Query(None, description="Filter by task status"),
     is_blocked: Optional[bool] = Query(None, description="Filter by block status"),
     is_overdue: Optional[bool] = Query(None, description="Filter by overdue status"),
-    assigned_to: Optional[str] = Query(None, description="Filter by assigned person"),
-    reviewer: Optional[str] = Query(None, description="Filter by reviewer"),
-    priority: Optional[int] = Query(None, ge=1, le=4, description="Filter by priority"),
-    version_name: Optional[str] = Query(None, description="Filter by version name"),
+    resource_applied: Optional[bool] = Query(None, description="Filter by resource applied"),
+    ops_testing_status: Optional[str] = Query(None, description="Filter by ops testing status"),
+    launch_check_status: Optional[str] = Query(None, description="Filter by launch check status"),
     sort_by: str = Query("updated_at", description="Sort field"),
     order: str = Query("desc", regex="^(asc|desc)$", description="Sort order"),
     db: AsyncSession = Depends(get_db),
@@ -65,16 +65,16 @@ async def list_subtasks(
 
     # Create filter object
     filters = SubTaskFilter(
-        application_id=application_id,
-        module_name=module_name,
+        l2_id=l2_id,
+        app_name=app_name,
         sub_target=sub_target,
+        version_name=version_name,
         task_status=task_status,
         is_blocked=is_blocked,
         is_overdue=is_overdue,
-        assigned_to=assigned_to,
-        reviewer=reviewer,
-        priority=priority,
-        version_name=version_name
+        resource_applied=resource_applied,
+        ops_testing_status=ops_testing_status,
+        launch_check_status=launch_check_status
     )
 
     # Create sort object
@@ -137,17 +137,6 @@ async def get_overdue_subtasks(
     return subtasks
 
 
-@router.get("/assignee/{assignee}", response_model=List[SubTaskResponse])
-async def get_subtasks_by_assignee(
-    assignee: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Get subtasks assigned to a specific person."""
-    subtasks = await subtask_service.get_subtasks_by_assignee(db=db, assignee=assignee)
-    return subtasks
-
-
 @router.get("/status/{task_status}", response_model=List[SubTaskResponse])
 async def get_subtasks_by_status(
     task_status: SubTaskStatus,
@@ -175,12 +164,11 @@ async def get_subtasks_by_application(
 
 @router.get("/workload", status_code=status.HTTP_200_OK)
 async def get_workload_summary(
-    assignee: Optional[str] = Query(None, description="Filter by assignee"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Get workload summary for subtasks."""
-    summary = await subtask_service.get_subtask_workload_summary(db=db, assignee=assignee)
+    summary = await subtask_service.get_subtask_workload_summary(db=db)
     return summary
 
 
@@ -305,7 +293,7 @@ async def bulk_update_status(
 async def clone_subtask(
     subtask_id: int,
     target_application_id: int = Query(..., description="Target application ID"),
-    module_name_suffix: str = Query("_clone", description="Suffix for cloned module name"),
+    version_suffix: str = Query("_clone", description="Suffix for cloned version name"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_roles([UserRole.ADMIN, UserRole.MANAGER, UserRole.EDITOR]))
 ):
@@ -316,7 +304,7 @@ async def clone_subtask(
             subtask_id=subtask_id,
             new_application_id=target_application_id,
             created_by=current_user.id,
-            module_name_suffix=module_name_suffix
+            version_suffix=version_suffix
         )
         if not cloned_subtask:
             raise HTTPException(

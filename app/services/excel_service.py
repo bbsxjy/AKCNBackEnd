@@ -657,8 +657,12 @@ class ExcelService:
         # Write data
         for row_num, subtask in enumerate(subtasks, start=2):
             for col_num, (header, field) in enumerate(self.config.SUBTASK_FIELDS.items(), start=1):
-                if field == 'application_l2_id':
+                if field == 'l2_id':  # 修正：不再是application_l2_id
+                    # 获取关联的Application的l2_id
                     value = subtask.application.l2_id if subtask.application else ''
+                elif field == 'app_name':
+                    # 从SubTask直接获取app_name字段
+                    value = subtask.app_name if hasattr(subtask, 'app_name') else ''
                 else:
                     value = self._format_cell_value(getattr(subtask, field, ''), field)
                 worksheet.cell(row=row_num, column=col_num, value=value)
@@ -1080,6 +1084,15 @@ class ExcelService:
             return None
 
         try:
+            # Special handling for l2_id - always treat as string
+            if field_name == 'l2_id':
+                if isinstance(value, (int, float)):
+                    import math
+                    if math.isnan(value):
+                        return None
+                    return str(int(value))  # Convert numeric to string
+                else:
+                    return str(value).strip() if value else None
             # DateTime fields (timestamp fields)
             if field_name in self.config.DATETIME_FIELDS:
                 if isinstance(value, datetime):
@@ -1143,6 +1156,10 @@ class ExcelService:
             # Integer fields
             elif field_name in self.config.INTEGER_FIELDS:
                 if isinstance(value, (int, float)):
+                    # Check for NaN values
+                    import math
+                    if math.isnan(value):
+                        return None
                     return int(value)
                 elif isinstance(value, str):
                     # Special handling for certain fields
@@ -1152,9 +1169,6 @@ class ExcelService:
                         year_match = re.search(r'(\d{4})', value)
                         if year_match:
                             return int(year_match.group(1))
-                    elif field_name == 'l2_id':
-                        # L2 ID should be treated as string
-                        return value.strip()
                     elif field_name == 'app_tier':
                         # Convert tier strings to numbers
                         tier_mapping = {
@@ -1252,23 +1266,60 @@ class ExcelService:
                     # 如果不匹配，使用默认值
                     df.at[index, 'overall_transformation_target'] = TransformationTarget.AK.value
 
-            # Validate status (支持前端发送的值)
+            # Validate and normalize status
             status = row.get('current_status')
             if status:
-                # 标准化状态值
+                # 状态映射 - 根据实际需求
                 status_mapping = {
-                    'in_progress': '研发进行中',
-                    'completed': '全部完成',
+                    # 保持原状态
+                    '待启动': '待启动',
+                    '需求进行中': '需求进行中',
+                    '研发进行中': '研发进行中',
+                    '业务上线中': '业务上线中',
+                    '阻塞': '阻塞',
+                    '全部完成': '全部完成',
+
+                    # 需要映射的状态
+                    '部署进行中': '技术上线中',
+                    '中止': '计划下线',
+
+                    # 英文映射（如果前端使用）
                     'not_started': '待启动',
+                    'requirement_in_progress': '需求进行中',
+                    'dev_in_progress': '研发进行中',
+                    'in_progress': '研发进行中',
+                    'tech_online': '技术上线中',
+                    'deployment_in_progress': '技术上线中',
                     'biz_online': '业务上线中',
-                    '正常': '研发进行中'  # 前端发送的"正常"状态
+                    'blocked': '阻塞',
+                    'planned_offline': '计划下线',
+                    'terminated': '计划下线',
+                    'cancelled': '计划下线',
+                    'completed': '全部完成',
+
+                    # 其他可能的变体
+                    '正常': '研发进行中',
+                    '进行中': '研发进行中',
+                    '完成': '全部完成',
+                    '已完成': '全部完成',
+                    '未开始': '待启动',
+                    '测试中': '技术上线中',
+                    '待部署': '技术上线中',
+                    '已上线': '全部完成',
+                    '已阻塞': '阻塞',
+                    '已中止': '计划下线',
+                    '已取消': '计划下线'
                 }
 
                 if status in status_mapping:
                     df.at[index, 'current_status'] = status_mapping[status]
-                elif status not in [s.value for s in ApplicationStatus]:
-                    # 如果不匹配，使用默认值
-                    df.at[index, 'current_status'] = '研发进行中'
+                elif status not in ['待启动', '需求进行中', '研发进行中', '技术上线中',
+                                    '业务上线中', '阻塞', '计划下线', '全部完成']:
+                    # 默认值
+                    df.at[index, 'current_status'] = '待启动'
+            else:
+                # 状态为空时设置默认值
+                df.at[index, 'current_status'] = '待启动'
 
             # Convert app_tier if it's a string
             app_tier = row.get('app_tier')
@@ -1310,130 +1361,262 @@ class ExcelService:
         return errors
 
     async def _validate_subtasks_data(self, db: AsyncSession, df: pd.DataFrame) -> List[Dict[str, Any]]:
-        """Validate subtasks data."""
+        """Validate subtasks data based on actual database structure."""
 
         errors = []
         warnings = []
-        rows_to_skip = []  # Track rows that will be skipped
 
-        # Get valid application L2 IDs
-        app_result = await db.execute(select(Application.l2_id))
-        valid_l2_ids = set([row[0] for row in app_result.all()])
-        print(f"DEBUG: Found {len(valid_l2_ids)} valid L2 IDs in database")
-        if valid_l2_ids:
-            print(f"DEBUG: Sample L2 IDs: {sorted(list(valid_l2_ids))[:10]}")
-        else:
-            print(f"DEBUG: [WARNING] No applications found in database! This will cause all validations to fail.")
+        # Get valid application mappings (l2_id -> database id)
+        app_result = await db.execute(select(Application.id, Application.l2_id))
+        app_mapping = {l2_id: app_id for app_id, l2_id in app_result.all()}
+        valid_l2_ids = set(app_mapping.keys())
 
-        # Also check all L2 IDs in the DataFrame to see what we're trying to match
-        df_l2_ids = df['application_l2_id'].dropna().unique() if 'application_l2_id' in df.columns else []
-        print(f"DEBUG: L2 IDs in Excel data: {list(df_l2_ids)[:10]}")
+        print(f"DEBUG: Found {len(valid_l2_ids)} valid applications in database")
 
-        # Count rows with empty L2 ID
+        # Count statistics
         empty_l2_count = 0
+        rows_to_process = 0
 
         for index, row in df.iterrows():
-            row_num = index + 2  # Excel row number
+            row_num = index + 2  # Excel row number (1-based + header)
 
-            # Debug: show first few rows of data
-            if index < 3:
-                print(f"DEBUG: Row {row_num} data: {dict(row)}")
+            # Check L2 ID (this is the Application's l2_id string, not the database id)
+            app_l2_id = row.get('l2_id')
 
-            # Check if L2 ID is empty - if so, skip this row entirely
-            app_l2_id = row.get('l2_id')  # Now using l2_id field
+            # Skip rows with empty L2 ID
             if pd.isna(app_l2_id) or app_l2_id == '' or app_l2_id is None:
                 empty_l2_count += 1
-                rows_to_skip.append(row_num)
-                # Don't add this as an error, just skip the row
-                if empty_l2_count <= 5:  # Only log first 5 to avoid spam
-                    print(f"DEBUG: Row {row_num} will be skipped (empty L2 ID)")
-                continue  # Skip validation for this row entirely
+                continue  # Skip this row silently
 
-            # L2 ID is not empty at this point, proceed with validation
-            print(f"DEBUG: Row {row_num} L2 ID check: original='{app_l2_id}'")
+            rows_to_process += 1
+            app_l2_id_str = str(app_l2_id).strip()
 
-            if app_l2_id:
-                app_l2_id_str = str(app_l2_id).strip()
-                print(f"DEBUG: L2 ID after string conversion: '{app_l2_id_str}'")
+            # Store cleaned L2 ID
+            df.at[index, 'l2_id'] = app_l2_id_str
 
-                # Keep the original L2 ID without adding prefix
-                # User explicitly requested: "对于导入的数据，请不要在原数据前加前缀"
-                df.at[index, 'l2_id'] = app_l2_id_str
-                app_l2_id = app_l2_id_str
+            # Check if application exists (will be created if not)
+            if app_l2_id_str not in valid_l2_ids:
+                warnings.append({
+                    'row': row_num,
+                    'type': 'info',
+                    'message': f'应用 {app_l2_id_str} 不存在，将自动创建'
+                })
 
-                # 检查应用是否存在（如果不存在，import时会自动创建）
-                if app_l2_id not in valid_l2_ids:
-                    print(f"DEBUG: [WARNING] L2 ID '{app_l2_id}' not found in database, will be auto-created during import")
-                else:
-                    print(f"DEBUG: [FOUND] L2 ID '{app_l2_id}' in database")
-            else:
-                print(f"DEBUG: [WARNING] No L2 ID provided for row {row_num}")
-
-            # Validate and normalize sub_target (支持前端发送的值)
+            # Validate and normalize sub_target
             sub_target = row.get('sub_target')
             if sub_target:
-                # 标准化子目标值
+                # Standardize sub_target values
                 target_mapping = {
-                    'cloud_native': TransformationTarget.CLOUD_NATIVE.value,
-                    'AK': TransformationTarget.AK.value,
-                    'ak': TransformationTarget.AK.value,
-                    '云原生': TransformationTarget.CLOUD_NATIVE.value,
-                    'Cloud Native': TransformationTarget.CLOUD_NATIVE.value
+                    'cloud_native': '云原生',
+                    'Cloud Native': '云原生',
+                    'CLOUD_NATIVE': '云原生',
+                    '云原生': '云原生',
+                    'AK': 'AK',
+                    'ak': 'AK',
+                    'Ak': 'AK'
                 }
 
                 if sub_target in target_mapping:
                     df.at[index, 'sub_target'] = target_mapping[sub_target]
-                elif sub_target not in [t.value for t in TransformationTarget]:
-                    # 如果不匹配，使用默认值
-                    df.at[index, 'sub_target'] = TransformationTarget.AK.value
+                elif sub_target not in ['AK', '云原生']:
+                    # Default to AK if invalid
+                    df.at[index, 'sub_target'] = 'AK'
+                    warnings.append({
+                        'row': row_num,
+                        'column': '子目标',
+                        'message': f'无效的子目标 "{sub_target}"，已设为默认值 "AK"'
+                    })
 
-            # Validate and normalize task status (支持前端发送的值)
-            status = row.get('task_status')
-            if status:
-                # 标准化状态值
+            # Validate and normalize task_status
+            task_status = row.get('task_status')
+            if task_status:
+                # 状态映射 - 根据实际需求更新
                 status_mapping = {
-                    'not_started': '待启动',
+                    # 保持原状态
+                    '未开始': '未开始',
+                    '需求进行中': '需求进行中',
+                    '研发进行中': '研发进行中',
+                    '业务上线中': '业务上线中',
+                    '阻塞': '阻塞',
+                    '子任务完成': '子任务完成',
+
+                    # 需要映射的状态
+                    '部署进行中': '技术上线中',
+                    '中止': '计划下线',
+
+                    # 英文映射（如果前端有使用）
+                    'not_started': '未开始',
+                    'NOT_STARTED': '未开始',
+                    'requirement_in_progress': '需求进行中',
+                    'REQUIREMENT_IN_PROGRESS': '需求进行中',
+                    'dev_in_progress': '研发进行中',
+                    'DEV_IN_PROGRESS': '研发进行中',
                     'in_progress': '研发进行中',
-                    'testing': '测试中',
-                    'deployment_ready': '待上线',
-                    'completed': '已完成',
-                    'blocked': '阻塞中',
-                    '正常': '研发进行中'  # 前端发送的\"正常\"状态
+                    'tech_online': '技术上线中',
+                    'TECH_ONLINE': '技术上线中',
+                    'deployment_in_progress': '技术上线中',
+                    'biz_online': '业务上线中',
+                    'BIZ_ONLINE': '业务上线中',
+                    'blocked': '阻塞',
+                    'BLOCKED': '阻塞',
+                    'planned_offline': '计划下线',
+                    'PLANNED_OFFLINE': '计划下线',
+                    'terminated': '计划下线',
+                    'cancelled': '计划下线',
+                    'completed': '子任务完成',
+                    'COMPLETED': '子任务完成',
+
+                    # 其他可能的变体
+                    '进行中': '研发进行中',
+                    '完成': '子任务完成',
+                    '已完成': '子任务完成',
+                    '待启动': '未开始',
+                    '测试中': '技术上线中',
+                    '待部署': '技术上线中',
+                    '已上线': '子任务完成',
+                    '已阻塞': '阻塞',
+                    '已中止': '计划下线',
+                    '已取消': '计划下线'
                 }
 
-                if status in status_mapping:
-                    df.at[index, 'task_status'] = status_mapping[status]
-                elif status not in [s.value for s in SubTaskStatus]:
-                    # 如果不匹配，使用默认值
-                    df.at[index, 'task_status'] = '待启动'
+                if task_status in status_mapping:
+                    df.at[index, 'task_status'] = status_mapping[task_status]
+                elif task_status not in ['未开始', '需求进行中', '研发进行中', '技术上线中',
+                                         '业务上线中', '阻塞', '计划下线', '子任务完成']:
+                    # 如果不在有效状态列表中，默认设为"未开始"
+                    df.at[index, 'task_status'] = '未开始'
+                    warnings.append({
+                        'row': row_num,
+                        'column': '任务状态',
+                        'message': f'无效的状态 "{task_status}"，已设为默认值 "未开始"'
+                    })
+            else:
+                # 如果状态为空，设置默认值
+                df.at[index, 'task_status'] = '未开始'
 
-            # Validate progress percentage
+            # 根据状态设置默认进度百分比
             progress = row.get('progress_percentage')
-            if progress is not None and (progress < 0 or progress > 100):
-                errors.append({
-                    'row': row_num,
-                    'column': '进度百分比',
-                    'message': '进度百分比必须在0-100之间',
-                    'value': progress
-                })
+            if pd.isna(progress) or progress is None:
+                # 根据状态设置默认进度
+                status_progress_map = {
+                    '未开始': 0,
+                    '需求进行中': 10,
+                    '研发进行中': 30,
+                    '技术上线中': 60,
+                    '业务上线中': 80,
+                    '子任务完成': 100,
+                    '阻塞': None,  # 保持原有进度
+                    '计划下线': None  # 保持原有进度
+                }
 
-        print(f"DEBUG: Validation completed. Total errors: {len(errors)}, Rows to skip: {len(rows_to_skip)}")
+                current_status = df.at[index, 'task_status']
+                default_progress = status_progress_map.get(current_status, 0)
+                if default_progress is not None:
+                    df.at[index, 'progress_percentage'] = default_progress
+
+            # Validate boolean fields
+            for bool_field in ['is_blocked', 'resource_applied']:
+                value = row.get(bool_field)
+                if value is not None:
+                    if isinstance(value, str):
+                        value_lower = value.strip().lower()
+                        df.at[index, bool_field] = value_lower in ['是', 'true', 'yes', '1', 'y', '已申请', '已阻塞']
+                    elif isinstance(value, (int, float)):
+                        df.at[index, bool_field] = bool(value)
+                    elif pd.isna(value):
+                        df.at[index, bool_field] = False
+                else:
+                    df.at[index, bool_field] = False  # Default to False
+
+            # Validate date fields - handle NaT values
+            for date_field in ['planned_requirement_date', 'planned_release_date',
+                               'planned_tech_online_date', 'planned_biz_online_date',
+                               'actual_requirement_date', 'actual_release_date',
+                               'actual_tech_online_date', 'actual_biz_online_date']:
+                date_value = row.get(date_field)
+                if pd.isna(date_value):
+                    df.at[index, date_field] = None
+
+            # Validate ops_requirement_submitted (DateTime field)
+            ops_req = row.get('ops_requirement_submitted')
+            if ops_req is not None and not pd.isna(ops_req):
+                # Check if it's a string that looks like a status rather than a date
+                if isinstance(ops_req, str):
+                    status_strings = ['已完成', '已提交', '通过', '未提交', '进行中', '待提交', '完成']
+                    if ops_req.strip() in status_strings:
+                        # This is likely a mismatched column, clear it
+                        df.at[index, 'ops_requirement_submitted'] = None
+            else:
+                df.at[index, 'ops_requirement_submitted'] = None
+
+            # Validate ops_testing_status and launch_check_status (these are strings)
+            for status_field in ['ops_testing_status', 'launch_check_status']:
+                status_value = row.get(status_field)
+                if status_value and isinstance(status_value, str):
+                    # Normalize common status values
+                    status_normalize = {
+                        '通过': '通过',
+                        '已通过': '通过',
+                        '完成': '通过',
+                        '已完成': '通过',
+                        '检查通过': '通过',
+                        '未完成': '进行中',
+                        '进行中': '进行中',
+                        '待检查': '待检查',
+                        '未开始': '待检查'
+                    }
+                    if status_value in status_normalize:
+                        df.at[index, status_field] = status_normalize[status_value]
+                elif pd.isna(status_value):
+                    df.at[index, status_field] = None
+
+        # Summary messages
         if empty_l2_count > 0:
-            print(f"DEBUG: {empty_l2_count} rows will be skipped due to empty L2 ID")
-        if errors:
-            print(f"DEBUG: First 3 validation errors:")
-            for i, error in enumerate(errors[:3]):
-                print(f"DEBUG:   Error {i+1}: Row {error['row']} - {error['message']}")
-
-        # Add warning about skipped rows (not as error, just informational)
-        if len(rows_to_skip) > 0:
             warnings.append({
-                'type': 'info',
-                'message': f'{len(rows_to_skip)} 行将被跳过（L2 ID为空）',
-                'rows_skipped': rows_to_skip[:10]  # Show first 10 skipped rows
+                'type': 'summary',
+                'message': f'共 {empty_l2_count} 行因L2 ID为空被跳过'
             })
 
-        return errors
+        if rows_to_process == 0:
+            errors.append({
+                'type': 'critical',
+                'message': '没有找到有效的数据行（所有行的L2 ID都为空）'
+            })
+
+        # Check for duplicate entries (same l2_id + sub_target + version_name)
+        if rows_to_process > 0:
+            # Only check duplicates for non-null combinations
+            df_valid = df[df['l2_id'].notna()].copy()
+
+            # Handle null version_name by replacing with empty string for grouping
+            df_valid['version_name'] = df_valid['version_name'].fillna('')
+
+            duplicates = df_valid.groupby(['l2_id', 'sub_target', 'version_name']).size()
+            duplicates = duplicates[duplicates > 1]
+
+            for (l2_id, sub_target, version_name), count in duplicates.items():
+                # Find duplicate rows
+                mask = (df['l2_id'] == l2_id) & (df['sub_target'] == sub_target)
+                if version_name:
+                    mask = mask & (df['version_name'] == version_name)
+                else:
+                    mask = mask & df['version_name'].isna()
+
+                duplicate_rows = df[mask].index + 2
+
+                for row_num in duplicate_rows:
+                    errors.append({
+                        'row': row_num,
+                        'column': 'L2 ID + 子目标 + 版本名',
+                        'message': f'重复的子任务: L2={l2_id}, 目标={sub_target}, 版本={version_name or "空"}',
+                        'value': f'{l2_id}-{sub_target}-{version_name}'
+                    })
+
+        # Log validation summary
+        print(
+            f"DEBUG: Validation completed - Errors: {len(errors)}, Warnings: {len(warnings)}, Rows to process: {rows_to_process}")
+
+        return errors  # Return only errors, warnings are logged but don't block import
 
     def _get_column_name(self, field_name: str, field_mapping: Dict[str, str]) -> str:
         """Get Excel column name from field name."""
@@ -1618,11 +1801,30 @@ class ExcelService:
                 try:
                     app_l2_id = row.get('l2_id')  # Now looking for l2_id field in Excel
 
-                    # Skip rows with empty L2 ID
+                    # Skip rows with empty L2 ID, including NaN values
                     if pd.isna(app_l2_id) or app_l2_id == '' or app_l2_id is None:
                         skipped += 1
                         if skipped <= 5:  # Log first 5 skipped rows
                             print(f"DEBUG: Skipping row {index + 2} - empty L2 ID")
+                        continue
+
+                    # Convert app_l2_id to string (since Application.l2_id is a String field)
+                    if isinstance(app_l2_id, (int, float)):
+                        import math
+                        if math.isnan(app_l2_id):
+                            skipped += 1
+                            print(f"DEBUG: Skipping row {index + 2} - NaN L2 ID")
+                            continue
+                        app_l2_id = str(int(app_l2_id))  # Convert numeric to string
+                    elif isinstance(app_l2_id, str):
+                        app_l2_id = app_l2_id.strip()
+                        if not app_l2_id:
+                            skipped += 1
+                            print(f"DEBUG: Skipping row {index + 2} - empty L2 ID after stripping")
+                            continue
+                    else:
+                        skipped += 1
+                        print(f"DEBUG: Skipping row {index + 2} - unexpected L2 ID type: {type(app_l2_id)}")
                         continue
 
                     application_id = app_id_map.get(app_l2_id)
@@ -1633,7 +1835,7 @@ class ExcelService:
 
                         # Create placeholder application data
                         new_app_data = {
-                            'l2_id': app_l2_id,
+                            'l2_id': str(app_l2_id),  # Ensure l2_id is a string
                             'app_name': '未命名应用',  # Default name when creating placeholder
                             'current_status': '待启动',
                             'overall_transformation_target': 'AK',
@@ -1677,6 +1879,11 @@ class ExcelService:
 
                             for field, value in row.items():
                                 if field in subtask_model_fields and value is not None and value != '' and hasattr(existing_subtask, field):
+                                    # Check for NaN in numeric fields
+                                    if field == 'progress_percentage' and isinstance(value, float):
+                                        import math
+                                        if math.isnan(value):
+                                            value = 0
                                     setattr(existing_subtask, field, value)
 
                             # Handle ops_requirement_submitted separately - it's a DateTime field
@@ -1726,6 +1933,11 @@ class ExcelService:
                         subtask_data['task_status'] = '待启动'
                     if 'progress_percentage' not in subtask_data:
                         subtask_data['progress_percentage'] = 0
+                    else:
+                        # Check for NaN in progress_percentage
+                        import math
+                        if isinstance(subtask_data['progress_percentage'], float) and math.isnan(subtask_data['progress_percentage']):
+                            subtask_data['progress_percentage'] = 0
                     if 'is_blocked' not in subtask_data:
                         subtask_data['is_blocked'] = False
                     if 'resource_applied' not in subtask_data:
@@ -1832,18 +2044,19 @@ class ExcelService:
         return result.scalars().all()
 
     async def _get_subtasks_for_export(
-        self,
-        db: AsyncSession,
-        application_id: Optional[int] = None,
-        subtask_ids: Optional[List[int]] = None,
-        filters: Optional[Dict[str, Any]] = None
+            self,
+            db: AsyncSession,
+            application_id: Optional[int] = None,
+            subtask_ids: Optional[List[int]] = None,
+            filters: Optional[Dict[str, Any]] = None
     ) -> List[SubTask]:
         """Get subtasks for export."""
 
-        query = select(SubTask).join(Application, SubTask.application_id == Application.id)
+        # 修正：SubTask使用l2_id关联Application，不是application_id
+        query = select(SubTask).join(Application, SubTask.l2_id == Application.id)
 
         if application_id:
-            query = query.where(SubTask.application_id == application_id)
+            query = query.where(SubTask.l2_id == application_id)
 
         if subtask_ids:
             query = query.where(SubTask.id.in_(subtask_ids))
@@ -1856,7 +2069,8 @@ class ExcelService:
             if filters.get('is_blocked') is not None:
                 query = query.where(SubTask.is_blocked == filters['is_blocked'])
 
-        result = await db.execute(query.order_by(Application.l2_id, SubTask.module_name))
+        # 修正排序字段：使用version_name而不是module_name
+        result = await db.execute(query.order_by(Application.l2_id, SubTask.version_name))
         return result.scalars().all()
 
     def _write_headers(self, worksheet, headers: List[str], style: str = "standard"):
@@ -1947,16 +2161,42 @@ class ExcelService:
         worksheet = workbook.active
         worksheet.title = "子任务导入模板"
 
-        # Headers
-        headers = list(self.config.SUBTASK_FIELDS.keys())
+        # Headers - 使用实际存在的字段
+        headers = [
+            'L2ID', 'L2应用', '子目标', '版本名', '改造状态',
+            '进度百分比', '是否阻塞', '阻塞原因',
+            '【计划】需求完成时间', '【计划】发版时间',
+            '【计划】技术上线时间', '【计划】业务上线时间',
+            '【实际】需求到达时间', '【实际】发版时间',
+            '【实际】技术上线时间', '【实际】业务上线时间',
+            '资源是否申请', '运营需求提交', '运营测试', '上线检查', '备注'
+        ]
         self._write_headers(worksheet, headers, "standard")
 
         if include_sample:
-            # Sample data
+            # 更新示例数据
             sample_data = [
-                'L2_APP_001', '用户认证模块', 'AK', 'v1.0', '研发进行中',
-                80, '否', '', '2024-01-15', '2024-02-15', '2024-02-28',
-                '2024-03-15', '', '', '', '', 40, '认证功能开发'
+                'CI001072775',  # L2_ID
+                '云闪付数据中心分流应用',  # app_name
+                'AK',  # sub_target
+                'v1.0',  # version_name
+                '研发进行中',  # task_status
+                80,  # progress_percentage
+                '否',  # is_blocked
+                '',  # block_reason
+                '2024-01-15',  # planned dates...
+                '2024-02-15',
+                '2024-02-28',
+                '2024-03-15',
+                '',  # actual dates...
+                '',
+                '',
+                '',
+                '否',  # resource_applied
+                '',  # ops_requirement_submitted
+                '',  # ops_testing_status
+                '',  # launch_check_status
+                '示例备注'  # notes
             ]
 
             for col, value in enumerate(sample_data, 1):

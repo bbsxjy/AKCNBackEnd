@@ -19,8 +19,12 @@ class TransformationTarget(str, enum.Enum):
 class ApplicationStatus(str, enum.Enum):
     """Application status enumeration."""
     NOT_STARTED = "待启动"
+    REQUIREMENT_IN_PROGRESS = "需求进行中"
     DEV_IN_PROGRESS = "研发进行中"
+    TECH_ONLINE = "技术上线中"  # 部署进行中映射到这里
     BIZ_ONLINE = "业务上线中"
+    BLOCKED = "阻塞"
+    PLANNED_OFFLINE = "计划下线"  # 中止映射到这里
     COMPLETED = "全部完成"
 
 

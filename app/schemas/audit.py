@@ -4,7 +4,7 @@ Audit Log related Pydantic schemas
 
 from typing import List, Dict, Any, Optional
 from datetime import datetime, date
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from app.models.audit_log import AuditOperation
 
 
@@ -24,6 +24,35 @@ class AuditLogCreate(AuditLogBase):
     user_ip: Optional[str] = Field(None, description="User IP address")
     user_agent: Optional[str] = Field(None, description="User agent")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+
+    @validator('old_values', 'new_values')
+    def normalize_status_values(cls, v):
+        """Normalize status values in audit logs."""
+        if v and 'current_status' in v:
+            # Application status mapping
+            app_status_mapping = {
+                '部署进行中': '技术上线中',
+                '中止': '计划下线',
+                '已完成': '全部完成',
+                '完成': '全部完成',
+                '未开始': '待启动'
+            }
+            if v['current_status'] in app_status_mapping:
+                v['current_status'] = app_status_mapping[v['current_status']]
+
+        if v and 'task_status' in v:
+            # SubTask status mapping
+            task_status_mapping = {
+                '部署进行中': '技术上线中',
+                '中止': '计划下线',
+                '已完成': '子任务完成',
+                '完成': '子任务完成',
+                '待启动': '未开始'
+            }
+            if v['task_status'] in task_status_mapping:
+                v['task_status'] = task_status_mapping[v['task_status']]
+
+        return v
 
 
 class AuditLogResponse(AuditLogBase):

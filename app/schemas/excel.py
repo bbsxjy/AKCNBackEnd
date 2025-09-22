@@ -40,13 +40,13 @@ class ExcelImportResult(BaseModel):
 class ApplicationImportRequest(ExcelImportRequest):
     """Schema for application import request."""
     merge_strategy: str = Field("update", description="Merge strategy: update, skip, replace")
-    default_supervision_year: Optional[int] = Field(None, description="Default supervision year")
-    default_responsible_team: Optional[str] = Field(None, description="Default responsible team")
+    default_ak_supervision_acceptance_year: Optional[int] = Field(None, description="Default AK supervision acceptance year")
+    default_dev_team: Optional[str] = Field(None, description="Default development team")
 
 
 class SubTaskImportRequest(ExcelImportRequest):
     """Schema for subtask import request."""
-    application_id: Optional[int] = Field(None, description="Filter by application ID")
+    l2_id: Optional[int] = Field(None, description="Filter by application ID")
     create_missing_applications: bool = Field(False, description="Create applications if not found")
     default_task_status: str = Field("待启动", description="Default task status")
 
@@ -63,22 +63,23 @@ class ExcelExportRequest(BaseModel):
 class ApplicationExportRequest(ExcelExportRequest):
     """Schema for application export request."""
     application_ids: Optional[List[int]] = Field(None, description="Specific application IDs to export")
-    supervision_year: Optional[int] = Field(None, description="Filter by supervision year")
-    responsible_team: Optional[str] = Field(None, description="Filter by responsible team")
-    overall_status: Optional[str] = Field(None, description="Filter by overall status")
-    transformation_target: Optional[str] = Field(None, description="Filter by transformation target")
+    ak_supervision_acceptance_year: Optional[int] = Field(None, description="Filter by AK supervision acceptance year")
+    dev_team: Optional[str] = Field(None, description="Filter by development team")
+    ops_team: Optional[str] = Field(None, description="Filter by operations team")
+    current_status: Optional[str] = Field(None, description="Filter by current status")
+    overall_transformation_target: Optional[str] = Field(None, description="Filter by overall transformation target")
     include_subtasks: bool = Field(False, description="Include related subtasks")
     group_by_team: bool = Field(False, description="Group applications by team")
 
 
 class SubTaskExportRequest(ExcelExportRequest):
     """Schema for subtask export request."""
-    application_id: Optional[int] = Field(None, description="Filter by application ID")
+    l2_id: Optional[str] = Field(None, description="Filter by L2 ID")
     subtask_ids: Optional[List[int]] = Field(None, description="Specific subtask IDs to export")
     task_status: Optional[str] = Field(None, description="Filter by task status")
     sub_target: Optional[str] = Field(None, description="Filter by sub target")
     is_blocked: Optional[bool] = Field(None, description="Filter by blocked status")
-    responsible_person: Optional[str] = Field(None, description="Filter by responsible person")
+    dev_owner: Optional[str] = Field(None, description="Filter by development owner")
     include_application_details: bool = Field(True, description="Include application details")
 
 
