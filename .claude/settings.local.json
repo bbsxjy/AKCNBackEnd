@@ -35,7 +35,8 @@
       "Bash(del test_excel_mapping.py)",
       "Bash(del test_excel_mapping_simple.py)",
       "Bash(del test_subtasks.xlsx)",
-      "Bash(pytest:*)"
+      "Bash(pytest:*)",
+      "Bash(del:*)"
     ],
     "deny": [],
     "ask": []

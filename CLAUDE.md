@@ -1,38 +1,92 @@
-# CLAUDE.md
+# CLAUDE.md - AKCN Project Management System Backend
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides comprehensive guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-AK Cloud Native Transformation Management System - Backend API Service
+**AK Cloud Native Transformation Management System - Backend API Service**
 
-This is a FastAPI-based backend for managing enterprise application transformation from traditional architecture to AK/Cloud Native. The system tracks transformation progress across multiple applications and their subtasks, with automatic status calculation and comprehensive audit logging.
+A production-ready FastAPI-based backend for managing enterprise application transformation from traditional architecture to AK/Cloud Native platforms. The system provides comprehensive tracking of transformation progress across multiple applications and their subtasks, with real-time status calculation, comprehensive audit logging, and role-based access control.
 
 ## Tech Stack
 
-- **Framework**: FastAPI (Python)
-- **Database**: PostgreSQL (main) + Redis (cache)
-- **Authentication**: SSO integration with JWT tokens
-- **ORM**: SQLAlchemy
-- **Migration**: Alembic
-- **Testing**: pytest + pytest-asyncio
-- **API Docs**: Auto-generated via FastAPI (/docs)
+### Core Technologies
+- **Framework**: FastAPI 0.115+ (Python 3.8+)
+- **Database**: PostgreSQL 14+ (primary) with asyncpg driver
+- **Cache**: Redis 5.2+ (optional, for performance optimization)
+- **ORM**: SQLAlchemy 2.0+ with async support
+- **Migration**: Alembic 1.14+
+- **Authentication**: JWT tokens with SSO integration support
 
-## Development Commands
+### Development & Testing
+- **Testing**: pytest 8.3+ with pytest-asyncio
+- **Code Quality**: black, isort, flake8, mypy
+- **API Documentation**: Auto-generated OpenAPI/Swagger (/docs)
+- **Excel Processing**: openpyxl 3.1+, pandas 2.2+
 
-### Environment Setup
+## Quick Start
+
+### Prerequisites
+1. Python 3.8 or higher
+2. PostgreSQL 14+ installed and running
+3. Git for version control
+4. Virtual environment tool (venv/virtualenv)
+
+### Initial Setup
 ```bash
-# Create virtual environment
+# Clone repository
+git clone <repository-url>
+cd AKCNBackEnd
+
+# Create and activate virtual environment
 python -m venv venv
-
-# Activate virtual environment (Windows)
+# Windows
 venv\Scripts\activate
-
-# Activate virtual environment (Linux/Mac)
+# Linux/Mac
 source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
+
+# Setup PostgreSQL database with test data
+python setup_postgresql.py
+
+# Or setup without test data
+python setup_postgresql.py --no-data
+
+# Create .env file from example
+cp .env.example .env
+# Edit .env with your configuration
+```
+
+### Environment Configuration (.env)
+```env
+# Database
+DATABASE_URL=postgresql+asyncpg://akcn_user:akcn_password@localhost:5432/akcn_dev_db
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=akcn_user
+DB_PASSWORD=akcn_password
+DB_NAME=akcn_dev_db
+
+# Redis (optional)
+REDIS_URL=redis://localhost:6379
+
+# Security
+JWT_SECRET_KEY=your-secret-key-change-in-production
+JWT_ALGORITHM=HS256
+JWT_EXPIRATION_HOURS=24
+
+# SSO (if using)
+SSO_BASE_URL=https://sso.company.com
+SSO_CLIENT_ID=your-client-id
+SSO_CLIENT_SECRET=your-client-secret
+
+# Application
+APP_NAME=AKCN Project Management
+APP_VERSION=1.0.0
+DEBUG=True
+CORS_ORIGINS=["http://localhost:3000", "http://localhost:8080"]
 ```
 
 ### Running the Application
@@ -40,23 +94,441 @@ pip install -r requirements.txt
 # Development server with auto-reload
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-# Production server
-gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker
+# Production server (Windows/Linux)
+gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+
+# Access API documentation
+# http://localhost:8000/docs (Swagger UI)
+# http://localhost:8000/redoc (ReDoc)
 ```
 
-### Database Operations
+## Project Structure
+
+```
+AKCNBackEnd/
+├── app/                        # Main application package
+│   ├── api/                    # API layer
+│   │   ├── deps.py            # Dependency injection (auth, db, etc.)
+│   │   └── v1/                # API version 1
+│   │       ├── endpoints/     # API endpoints
+│   │       │   ├── applications.py    # Application CRUD & management
+│   │       │   ├── subtasks.py       # SubTask CRUD & batch operations
+│   │       │   ├── auth.py           # Authentication & authorization
+│   │       │   ├── audit.py          # Audit log & rollback
+│   │       │   ├── calculation.py    # Progress calculation service
+│   │       │   ├── dashboard.py      # Dashboard statistics & analytics
+│   │       │   ├── excel.py          # Excel import/export operations
+│   │       │   ├── notifications.py  # User notifications
+│   │       │   └── reports.py        # Report generation
+│   │       └── api.py         # API router aggregation
+│   ├── core/                  # Core configuration & utilities
+│   │   ├── config.py         # Settings management (pydantic-settings)
+│   │   ├── database.py       # Database configuration
+│   │   ├── exceptions.py     # Custom exception classes
+│   │   └── security.py       # JWT & security utilities
+│   ├── db/                    # Database layer
+│   │   └── session.py        # Async session management
+│   ├── models/                # SQLAlchemy ORM models
+│   │   ├── __init__.py       # Model exports
+│   │   ├── base.py           # Base model with timestamps
+│   │   ├── application.py    # Application model
+│   │   ├── subtask.py        # SubTask model
+│   │   ├── user.py           # User model with roles
+│   │   ├── audit_log.py      # Audit logging model
+│   │   └── notification.py   # Notification model
+│   ├── schemas/               # Pydantic validation schemas
+│   │   ├── application.py    # Application DTOs
+│   │   ├── subtask.py        # SubTask DTOs
+│   │   ├── auth.py           # Authentication DTOs
+│   │   ├── audit.py          # Audit log DTOs
+│   │   ├── dashboard.py      # Dashboard DTOs
+│   │   ├── excel.py          # Excel operation DTOs
+│   │   ├── notification.py   # Notification DTOs
+│   │   └── reports.py        # Report DTOs
+│   ├── services/              # Business logic layer
+│   │   ├── application_service.py    # Application business logic
+│   │   ├── subtask_service.py       # SubTask business logic
+│   │   ├── calculation_service.py   # Progress calculation algorithms
+│   │   ├── excel_service.py         # Excel processing logic
+│   │   ├── audit_service.py         # Audit operations
+│   │   ├── notification_service.py  # Notification management
+│   │   ├── reports_service.py       # Report generation
+│   │   └── sso_service.py           # SSO integration
+│   └── main.py               # FastAPI app initialization
+├── tests/                     # Test suite
+│   ├── conftest.py           # Pytest fixtures
+│   ├── test_applications.py  # Application tests
+│   ├── test_subtasks.py      # SubTask tests
+│   ├── test_auth.py          # Authentication tests
+│   ├── test_calculation.py   # Calculation tests
+│   └── test_excel.py         # Excel operations tests
+├── alembic/                   # Database migrations
+│   ├── versions/             # Migration files
+│   ├── alembic.ini          # Alembic configuration
+│   └── env.py               # Migration environment
+├── docs/                      # Documentation
+│   ├── API.md               # API documentation
+│   ├── DEPLOYMENT.md        # Deployment guide
+│   ├── DEVELOPMENT.md       # Developer guide
+│   └── TESTING.md           # Testing guide
+├── scripts/                   # Utility scripts
+│   ├── backup_db.py         # Database backup
+│   └── restore_db.py        # Database restore
+├── .env.example              # Environment variables template
+├── .gitignore               # Git ignore rules
+├── requirements.txt         # Python dependencies
+├── setup_postgresql.py      # Database setup script
+├── production_server.py     # Standalone test server
+├── Dockerfile               # Docker container definition
+├── docker-compose.yml       # Docker compose configuration
+└── README.md               # Project readme
+```
+
+## Core Features & Business Logic
+
+### 1. Application Management
+- **CRUD Operations**: Full create, read, update, delete for applications
+- **Status Tracking**: Automatic status calculation based on subtask progress
+- **Progress Calculation**: Real-time percentage calculation from subtasks
+- **Delay Detection**: Automatic detection and calculation of delays
+- **Bulk Operations**: Batch status recalculation for multiple applications
+
+### 2. SubTask Management
+- **Hierarchical Structure**: Tasks linked to parent applications
+- **Status Workflow**: NOT_STARTED → REQUIREMENT_ANALYSIS → DEV_IN_PROGRESS → TESTING → TECH_ONLINE → BIZ_ONLINE → COMPLETED
+- **Progress Tracking**: Individual task progress contributes to application progress
+- **Batch Updates**: Update multiple subtasks in single operation
+- **Assignment Management**: Track assigned users and reviewers
+
+### 3. Authentication & Authorization
+- **JWT Authentication**: Secure token-based authentication
+- **Role-Based Access Control (RBAC)**:
+  - **Admin**: Full system access, all operations
+  - **Manager**: Department-level management, can edit/view
+  - **Editor**: Can edit assigned applications and tasks
+  - **Viewer**: Read-only access to all data
+- **SSO Integration**: Support for enterprise SSO systems
+- **Test Mode**: Built-in test tokens for development
+
+### 4. Progress Calculation Engine
+- **Automatic Calculation**: Real-time progress updates
+- **Status Aggregation**:
+  - 待启动 (Not Started): All subtasks not started
+  - 研发进行中 (Dev In Progress): Any subtask in development
+  - 业务上线中 (Biz Online): Some tasks online, others pending
+  - 全部完成 (Completed): All subtasks completed
+- **Weighted Progress**: Calculate based on task importance/priority
+- **Delay Calculation**: Compare planned vs actual dates
+
+### 5. Excel Import/Export
+- **Bulk Import**: Import applications and subtasks from Excel
+- **Template Generation**: Generate import templates with validation
+- **Export Formats**: Multiple export formats (XLSX, CSV)
+- **Data Validation**: Pre-import validation and preview
+- **Error Handling**: Detailed error reporting for failed imports
+
+### 6. Audit System
+- **Complete Audit Trail**: Log all data changes
+- **Before/After Values**: Store complete change history
+- **User Tracking**: Track user, IP, and user agent
+- **Rollback Support**: Revert changes to previous state
+- **No Retention Limit**: Keep all audit logs indefinitely
+
+### 7. Dashboard & Analytics
+- **Real-time Statistics**: Live data aggregation
+- **Progress Trends**: Historical progress analysis
+- **Department Distribution**: Compare department performance
+- **Delay Analysis**: Identify and analyze delayed projects
+
+### 8. Notification System
+- **User Notifications**: Personal notification inbox
+- **Notification Types**: INFO, WARNING, ERROR, SUCCESS
+- **Read Status**: Track read/unread notifications
+- **Bulk Operations**: Mark all as read functionality
+
+## API Reference
+
+### Base URL
+```
+Development: http://localhost:8000/api/v1
+Production: https://your-domain.com/api/v1
+```
+
+### Authentication
+All API requests (except login) require JWT token in Authorization header:
+```
+Authorization: Bearer <token>
+```
+
+### Main Endpoint Groups
+
+#### Authentication (`/auth`)
+```
+POST /auth/login              # Login with credentials
+POST /auth/sso/verify         # Verify SSO token
+POST /auth/refresh            # Refresh JWT token
+GET  /auth/me                 # Get current user info
+GET  /auth/permissions        # Get user permissions
+POST /auth/logout             # Logout (invalidate token)
+```
+
+#### Applications (`/applications`)
+```
+GET    /applications/                    # List all (paginated)
+POST   /applications/                    # Create new
+GET    /applications/{app_id}           # Get by ID
+PUT    /applications/{app_id}           # Update
+DELETE /applications/{app_id}           # Delete
+GET    /applications/l2/{l2_id}         # Get by L2 ID
+GET    /applications/statistics         # Get statistics
+GET    /applications/delayed            # Get delayed apps
+GET    /applications/team/{team_name}   # Filter by team
+POST   /applications/bulk/recalculate   # Bulk recalculate
+```
+
+#### SubTasks (`/subtasks`)
+```
+GET    /subtasks/                  # List all (paginated)
+POST   /subtasks/                  # Create new
+GET    /subtasks/{task_id}        # Get by ID
+PUT    /subtasks/{task_id}        # Update
+DELETE /subtasks/{task_id}        # Delete
+GET    /subtasks/my-tasks         # User's assigned tasks
+POST   /subtasks/batch-update     # Batch update
+POST   /subtasks/batch/recalculate # Bulk recalculate
+```
+
+#### Dashboard (`/dashboard`)
+```
+GET /dashboard/stats                      # Summary statistics
+GET /dashboard/progress-trend             # Progress over time
+GET /dashboard/department-distribution    # By department
+GET /dashboard/delayed-summary            # Delayed projects
+```
+
+#### Excel Operations (`/excel`)
+```
+POST /excel/applications/import      # Import applications
+POST /excel/subtasks/import         # Import subtasks
+POST /excel/export/applications     # Export applications
+GET  /excel/subtasks/export         # Export subtasks
+GET  /excel/template                # Download template
+POST /excel/preview                 # Preview import
+POST /excel/validate                # Validate file
+GET  /excel/import/history          # Import history
+```
+
+#### Reports (`/reports`)
+```
+GET /reports/progress              # Progress report
+GET /reports/delayed               # Delayed projects
+GET /reports/department            # Department report
+GET /reports/export                # Export report
+```
+
+#### Audit (`/audit`)
+```
+GET  /audit/logs                   # View audit trail
+POST /audit/rollback/{log_id}     # Rollback change
+GET  /audit/export                 # Export logs
+```
+
+#### Notifications (`/notifications`)
+```
+GET  /notifications/               # Get user notifications
+PUT  /notifications/{id}/read      # Mark as read
+POST /notifications/mark-all-read  # Mark all read
+POST /notifications/create         # Create (admin only)
+```
+
+## Database Schema
+
+### Core Tables
+
+#### users
+```sql
+- id: UUID (PK)
+- sso_user_id: String (unique)
+- username: String (unique)
+- email: String (unique)
+- full_name: String
+- department: String
+- role: Enum (ADMIN, MANAGER, EDITOR, VIEWER)
+- is_active: Boolean
+- created_at: DateTime
+- updated_at: DateTime
+```
+
+#### applications
+```sql
+- id: UUID (PK)
+- l2_id: String (unique, business key)
+- app_name: String
+- supervision_year: Integer
+- transformation_target: Enum (AK, CLOUD_NATIVE)
+- is_ak_completed: Boolean
+- is_cloud_native_completed: Boolean
+- current_stage: String
+- overall_status: Enum
+- responsible_team: String
+- responsible_person: String
+- progress_percentage: Float
+- planned_*_date: Date (requirement, release, tech_online, biz_online)
+- actual_*_date: Date (requirement, release, tech_online, biz_online)
+- is_delayed: Boolean
+- delay_days: Integer
+- notes: Text
+- created_by: UUID (FK users.id)
+- updated_by: UUID (FK users.id)
+- created_at: DateTime
+- updated_at: DateTime
+```
+
+#### sub_tasks
+```sql
+- id: UUID (PK)
+- application_id: UUID (FK applications.id)
+- module_name: String
+- sub_target: String
+- version_name: String
+- task_status: Enum
+- progress_percentage: Float
+- is_blocked: Boolean
+- planned_*_date: Date (requirement, release, tech_online, biz_online)
+- actual_*_date: Date (requirement, release, tech_online, biz_online)
+- requirements: Text
+- technical_notes: Text
+- assigned_to: String
+- reviewer: String
+- priority: Integer (1-5)
+- estimated_hours: Integer
+- actual_hours: Integer
+- created_by: UUID (FK users.id)
+- updated_by: UUID (FK users.id)
+- created_at: DateTime
+- updated_at: DateTime
+```
+
+#### audit_logs
+```sql
+- id: UUID (PK)
+- table_name: String
+- record_id: UUID
+- operation: Enum (INSERT, UPDATE, DELETE)
+- old_values: JSONB
+- new_values: JSONB
+- user_id: UUID (FK users.id)
+- user_ip: String
+- user_agent: String
+- created_at: DateTime
+```
+
+#### notifications
+```sql
+- id: UUID (PK)
+- user_id: UUID (FK users.id)
+- title: String
+- message: Text
+- type: Enum (INFO, WARNING, ERROR, SUCCESS)
+- is_read: Boolean
+- read_at: DateTime
+- created_at: DateTime
+```
+
+### Relationships
+- Application ↔ SubTasks: One-to-Many
+- User ↔ Applications: Many-to-Many (created_by, updated_by)
+- User ↔ SubTasks: Many-to-Many (created_by, updated_by, assigned_to)
+- All tables → AuditLogs: Polymorphic relationship
+
+## Development Guidelines
+
+### Code Standards
+1. **Python Style**: Follow PEP 8, use black formatter
+2. **Type Hints**: Use type hints for all functions
+3. **Docstrings**: Document all classes and public methods
+4. **Imports**: Sort with isort, group by standard/third-party/local
+5. **Async/Await**: Use async patterns consistently
+
+### API Design Principles
+1. **RESTful**: Follow REST conventions
+2. **Consistent Naming**: Use snake_case for Python, camelCase for JSON
+3. **Error Handling**: Return appropriate HTTP status codes
+4. **Pagination**: Use limit/offset pattern
+5. **Filtering**: Support query parameters for filtering
+
+### Database Best Practices
+1. **Migrations**: Always use Alembic for schema changes
+2. **Indexes**: Add indexes for frequently queried columns
+3. **Transactions**: Use transactions for multi-table updates
+4. **Connection Pooling**: Configure appropriate pool size
+5. **Async Queries**: Use async SQLAlchemy patterns
+
+### Testing Requirements
+1. **Unit Tests**: Cover all service methods
+2. **Integration Tests**: Test API endpoints
+3. **Test Coverage**: Maintain >80% coverage
+4. **Fixtures**: Use pytest fixtures for test data
+5. **Mocking**: Mock external dependencies
+
+### Security Considerations
+1. **Authentication**: Always validate JWT tokens
+2. **Authorization**: Check permissions for each endpoint
+3. **Input Validation**: Use Pydantic for all inputs
+4. **SQL Injection**: Use parameterized queries
+5. **Secrets**: Never commit secrets to repository
+
+## Common Development Tasks
+
+### Adding a New Endpoint
+```python
+# 1. Create Pydantic schema (app/schemas/feature.py)
+class FeatureCreate(BaseModel):
+    name: str
+    description: Optional[str]
+
+# 2. Add endpoint (app/api/v1/endpoints/feature.py)
+@router.post("/", response_model=FeatureResponse)
+async def create_feature(
+    feature: FeatureCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return await FeatureService.create(db, feature, current_user)
+
+# 3. Implement service (app/services/feature_service.py)
+class FeatureService:
+    @staticmethod
+    async def create(db: AsyncSession, data: FeatureCreate, user: User):
+        # Business logic here
+        pass
+
+# 4. Add tests (tests/test_feature.py)
+async def test_create_feature(client, auth_headers):
+    response = await client.post(
+        "/api/v1/features/",
+        json={"name": "Test"},
+        headers=auth_headers
+    )
+    assert response.status_code == 200
+```
+
+### Database Migration
 ```bash
-# Run migrations
+# Create migration after model changes
+alembic revision --autogenerate -m "Add feature table"
+
+# Review generated migration
+# Edit alembic/versions/xxx_add_feature_table.py if needed
+
+# Apply migration
 alembic upgrade head
 
-# Create new migration
-alembic revision --autogenerate -m "description"
-
-# Rollback migration
+# Rollback if needed
 alembic downgrade -1
 ```
 
-### Testing
+### Running Tests
 ```bash
 # Run all tests
 pytest
@@ -67,413 +539,171 @@ pytest --cov=app --cov-report=html
 # Run specific test file
 pytest tests/test_applications.py
 
+# Run specific test
+pytest tests/test_applications.py::test_create_application
+
 # Run tests in parallel
 pytest -n auto
+
+# Run with verbose output
+pytest -v
 ```
 
-### Code Quality
+## Deployment
+
+### Production Checklist
+- [ ] Set strong JWT_SECRET_KEY
+- [ ] Configure production database
+- [ ] Set DEBUG=False in .env
+- [ ] Configure CORS for production domain
+- [ ] Set up SSL/TLS certificates
+- [ ] Configure reverse proxy (nginx/Apache)
+- [ ] Set up monitoring (Prometheus/Grafana)
+- [ ] Configure log aggregation
+- [ ] Set up database backups
+- [ ] Configure rate limiting
+
+### Docker Deployment
 ```bash
-# Format code with black
-black app/ tests/
+# Build image
+docker build -t akcn-backend .
 
-# Sort imports
-isort app/ tests/
+# Run container
+docker run -d \
+  --name akcn-backend \
+  -p 8000:8000 \
+  --env-file .env \
+  akcn-backend
 
-# Type checking
-mypy app/
-
-# Linting
-flake8 app/ tests/
-
-# All quality checks
-make lint
+# Using docker-compose
+docker-compose up -d
 ```
 
-## Project Structure
-
-```
-AKCNBackEnd/
-├── app/
-│   ├── api/
-│   │   ├── deps.py           # Dependency injection (auth, db, etc.)
-│   │   └── v1/
-│   │       ├── endpoints/     # API endpoints
-│   │       │   ├── applications.py  # Application CRUD endpoints
-│   │       │   ├── subtasks.py      # SubTask CRUD endpoints
-│   │       │   ├── auth.py          # Authentication endpoints
-│   │       │   ├── audit.py         # Audit log endpoints
-│   │       │   ├── calculation.py   # Progress calculation endpoints
-│   │       │   ├── dashboard.py     # Dashboard statistics endpoints
-│   │       │   ├── excel.py         # Excel import/export endpoints
-│   │       │   ├── notifications.py # Notification endpoints
-│   │       │   └── reports.py       # Report generation endpoints
-│   │       └── api.py        # API router aggregation
-│   ├── core/
-│   │   ├── config.py         # Settings and configuration
-│   │   ├── database.py       # Database connection & session
-│   │   ├── exceptions.py     # Custom exception classes
-│   │   └── security.py       # JWT and security utilities
-│   ├── db/
-│   │   └── session.py        # Database session management
-│   ├── models/               # SQLAlchemy models
-│   │   ├── __init__.py       # Model exports
-│   │   ├── application.py    # Application model with hybrid properties
-│   │   ├── audit_log.py      # Audit logging model
-│   │   ├── base.py           # Base model with timestamps
-│   │   ├── notification.py   # Notification model
-│   │   ├── subtask.py        # SubTask model
-│   │   └── user.py           # User model with roles
-│   ├── schemas/              # Pydantic schemas
-│   │   ├── application.py    # Application request/response schemas
-│   │   ├── audit.py          # Audit log schemas
-│   │   ├── auth.py           # Authentication schemas
-│   │   ├── calculation.py    # Calculation schemas
-│   │   ├── dashboard.py      # Dashboard schemas
-│   │   ├── excel.py          # Excel import/export schemas
-│   │   ├── notification.py   # Notification schemas
-│   │   ├── reports.py        # Report schemas
-│   │   └── subtask.py        # SubTask schemas
-│   ├── services/             # Business logic
-│   │   ├── application_service.py  # Application business logic
-│   │   ├── audit_service.py        # Audit operations
-│   │   ├── calculation_service.py  # Progress calculations
-│   │   ├── excel_service.py        # Excel processing logic
-│   │   ├── notification_service.py # Notification management
-│   │   ├── reports_service.py      # Report generation
-│   │   ├── sso_service.py          # SSO integration
-│   │   └── subtask_service.py      # SubTask business logic
-│   └── main.py              # FastAPI app initialization
-├── tests/                    # Test files (structure TBD)
-├── alembic/                  # Database migrations
-│   ├── versions/             # Migration files
-│   └── env.py               # Alembic configuration
-├── init_db.py               # Database initialization script
-├── production_server.py     # Standalone production server
-├── setup_postgresql_complete.py # Complete DB setup with test data
-├── requirements.txt
-└── .env.example
-```
-
-## Key Business Logic
-
-### Application Status Calculation
-- Status automatically updates based on subtask progress
-- States: 待启动 → 研发进行中 → 业务上线中 → 全部完成
-- Progress percentage calculated from weighted subtask completion
-
-### Role-Based Access Control
-- **Admin**: Full system access
-- **Manager**: Department-level data management
-- **Editor**: Edit assigned applications/tasks
-- **Viewer**: Read-only access
-
-### Audit System
-- All data changes logged with before/after values
-- Supports rollback to previous state
-- No limit on audit log retention (no 1000 record cap)
-
-## API Overview
-
-Base URL: `http://localhost:8000/api/v1`
-
-### Main Endpoints
-
-#### Authentication
-- `POST /auth/sso/verify` - Verify SSO token
-- `POST /auth/login` - Standard login with credentials
-- `POST /auth/refresh` - Refresh JWT token
-- `GET /auth/me` - Get current user profile
-- `GET /auth/permissions` - Get user permissions
-
-#### Application Management
-- `GET /applications/` - List applications (paginated, filterable)
-- `POST /applications/` - Create new application
-- `PUT /applications/{app_id}` - Update application by ID
-- `GET /applications/{app_id}` - Get single application
-- `GET /applications/l2/{l2_id}` - Get application by L2 ID
-- `DELETE /applications/{app_id}` - Delete application
-- `GET /applications/statistics` - Application statistics
-- `GET /applications/delayed` - Get delayed applications
-- `GET /applications/team/{team_name}` - Applications by team
-- `POST /applications/bulk/recalculate` - Bulk recalculate status
-
-#### SubTask Management
-- `GET /subtasks/` - List subtasks (paginated, filterable)
-- `POST /subtasks/` - Create new subtask
-- `PUT /subtasks/{task_id}` - Update subtask
-- `GET /subtasks/{task_id}` - Get single subtask
-- `DELETE /subtasks/{task_id}` - Delete subtask
-- `GET /subtasks/my-tasks` - User's assigned tasks
-- `POST /subtasks/batch-update` - Batch update subtasks
-- `POST /subtasks/batch/recalculate` - Bulk recalculate progress
-
-#### Dashboard & Analytics
-- `GET /dashboard/stats` - Dashboard statistics summary
-- `GET /dashboard/progress-trend` - Progress trend over time
-- `GET /dashboard/department-distribution` - Applications by department
-
-#### Excel Operations
-- `POST /excel/applications/import` - Import applications from Excel
-- `POST /excel/subtasks/import` - Import subtasks from Excel
-- `POST /excel/export/applications` - Export applications to Excel
-- `GET /excel/subtasks/export` - Export subtasks to Excel
-- `GET /excel/template` - Generate Excel import template
-- `POST /excel/preview` - Preview Excel file before import
-- `POST /excel/validate` - Validate Excel file
-- `GET /excel/import/history` - Excel import history
-- `GET /excel/export/formats` - Available export formats
-- `GET /excel/mapping/templates` - Excel mapping templates
-- `GET /excel/health` - Excel service health check
-
-#### Calculation Services
-- `POST /calculation/calculate` - Calculate application progress
-- `POST /calculation/bulk-calculate` - Bulk calculate multiple applications
-- `GET /calculation/status` - Calculation service status
-
-#### Audit & Compliance
-- `GET /audit/logs` - View audit trail
-- `POST /audit/rollback/{log_id}` - Rollback changes
-- `GET /audit/export` - Export audit logs
-
-#### Reports
-- `GET /reports/progress` - Progress summary report
-- `GET /reports/delayed` - Delayed applications report
-- `GET /reports/department` - Department performance report
-- `GET /reports/export` - Export reports to various formats
-
-#### Notifications
-- `GET /notifications/` - Get user notifications
-- `PUT /notifications/{id}/read` - Mark notification as read
-- `POST /notifications/mark-all-read` - Mark all as read
-- `POST /notifications/create` - Create notification (admin)
-
-### Authentication Flow
-1. User logs in via SSO
-2. SSO token verified with `/sso/verify`
-3. JWT token issued for API access
-4. Token included in Authorization header: `Bearer {token}`
-5. Permissions checked per endpoint based on user role
-
-## Database Schema
-
-### Core Tables
-- `users` - System users synced from SSO
-- `applications` - Main application records (L2 ID unique)
-- `sub_tasks` - Detailed tasks per application
-- `audit_logs` - Complete change history
-
-### Key Relationships
-- Application → SubTasks (1:N)
-- User → Applications (created_by, updated_by)
-- All tables → AuditLogs (polymorphic)
-
-## Environment Variables
-
-Required in `.env`:
-```
-DATABASE_URL=postgresql://user:pass@localhost/akcn_db
-REDIS_URL=redis://localhost:6379
-SSO_BASE_URL=https://sso.company.com
-JWT_SECRET_KEY=your-secret-key
-JWT_ALGORITHM=HS256
-JWT_EXPIRATION_HOURS=24
-```
-
-## Common Development Tasks
-
-### Adding a New Endpoint
-1. Create schema in `app/schemas/`
-2. Add endpoint in `app/api/v1/endpoints/`
-3. Implement service logic in `app/services/`
-4. Add tests in `tests/api/`
-5. Update API documentation
-
-### Modifying Database Schema
-1. Update model in `app/models/`
-2. Create migration: `alembic revision --autogenerate -m "description"`
-3. Review generated migration
-4. Apply: `alembic upgrade head`
-5. Update related schemas and services
-
-### Excel Import/Export Format
-- Main sheet: Application list with L2 ID as key
-- Detail sheet: Subtasks linked by L2 ID
-- Date format: YYYY-MM-DD
-- Status values must match enum definitions
-- UTF-8 encoding for Chinese characters
-
-## Development Work Plan
-
-### Phase 1: Project Foundation (✅ Completed)
-- ✅ Project setup and architecture design
-- ✅ Database schema design with PostgreSQL
-- ✅ API specification and FastAPI framework setup
-- ✅ CORS configuration for frontend integration
-
-### Phase 2: Core Backend Features (✅ Completed)
-
-#### T2.1 SSO Authentication Integration (✅ Completed)
-**Implemented:**
-- ✅ JWT token validation with test token support
-- ✅ Authentication middleware and dependencies
-- ✅ User role-based access control (Admin/Manager/Editor/Viewer)
-- ✅ Permission checking decorators and utilities
-- ✅ Authentication endpoints (/auth/login, /auth/me, /auth/permissions)
-
-#### T2.2 Application Management Module (✅ Completed)
-**Implemented:**
-- ✅ Complete CRUD APIs for applications with async SQLAlchemy
-- ✅ Advanced filtering and pagination support
-- ✅ L2 ID uniqueness constraint and validation
-- ✅ Application status calculation based on subtasks
-- ✅ Bulk operations and status recalculation
-- ✅ Team-based and delayed application queries
-
-#### T2.3 Subtask Management Module (✅ Completed)
-**Implemented:**
-- ✅ Subtask CRUD operations with proper validation
-- ✅ Batch status updates and progress calculation
-- ✅ Task assignment and user task queries
-- ✅ Status-based filtering and date validation
-- ✅ Real-time progress updates triggering application recalculation
-
-#### T2.4 Auto-Calculation Engine (✅ Completed)
-**Implemented:**
-- ✅ Automatic status aggregation from subtasks
-- ✅ Progress percentage calculation algorithms
-- ✅ Delay days calculation based on planned vs actual dates
-- ✅ Application status rollup (待启动 → 研发进行中 → 业务上线中 → 全部完成)
-- ✅ Async calculation service endpoints
-
-#### T2.5 Audit Log System (✅ Completed)
-**Implemented:**
-- ✅ Comprehensive audit logging for all data changes
-- ✅ Audit log query APIs with filtering
-- ✅ Data rollback functionality (basic structure)
-- ✅ Unlimited audit log retention
-- ✅ User action tracking and request correlation
-
-### Phase 3: Extended Features (✅ Completed)
-
-#### T3.1 Excel Import/Export (✅ Completed)
-**Implemented:**
-- ✅ OpenPyXL integration for Excel processing
-- ✅ Application and subtask import from Excel
-- ✅ Direct Excel file export (no intermediate file URLs)
-- ✅ Template generation for import formats
-- ✅ File validation and preview functionality
-- ✅ Import history tracking and health monitoring
-
-#### T3.2 Dashboard & Analytics (✅ Completed)
-**Implemented:**
-- ✅ Dashboard statistics with real database queries
-- ✅ Progress trend analysis over time
-- ✅ Department distribution and comparison
-- ✅ Real-time data aggregation without mock data
-
-#### T3.3 Report Generation System (✅ Completed)
-**Implemented:**
-- ✅ Progress summary reports with filtering
-- ✅ Delayed projects report with threshold configuration
-- ✅ Department performance comparison
-- ✅ Export functionality integrated with Excel service
-
-#### T3.4 Notification Service (✅ Completed)
-**Implemented:**
-- ✅ User notification system with CRUD operations
-- ✅ Notification reading status management
-- ✅ Bulk notification operations
-- ✅ Basic notification structure for future extensions
-
-### Phase 4: Technical Excellence (✅ Completed)
-
-#### T4.1 Database & Performance (✅ Completed)
-**Implemented:**
-- ✅ Complete PostgreSQL migration with async support
-- ✅ Proper connection pooling and session management
-- ✅ SQLAlchemy async patterns and greenlet error fixes
-- ✅ Hybrid properties for calculated fields
-- ✅ Database initialization with comprehensive test data
-
-#### T4.2 API Consistency & Standards (✅ Completed)
-**Implemented:**
-- ✅ Consistent API parameter naming (app_id, task_id)
-- ✅ Standardized response formats across all endpoints
-- ✅ Proper HTTP status codes and error handling
-- ✅ FastAPI automatic API documentation (/docs)
-- ✅ Production-ready server alignment
-
-### Current Status: Production Ready ✅
-
-**System Features:**
-- Complete CRUD operations for all entities
-- Real-time progress calculation and status updates
-- Advanced filtering, pagination, and sorting
-- Excel import/export with direct file handling
-- Dashboard analytics with live database queries
-- Comprehensive audit logging and rollback capability
-- Role-based access control and JWT authentication
-- PostgreSQL with async operations and proper connection management
-
-### Performance Targets
-- Page load time <3sec
-- API response time 95% <2sec
-- Support 500+ concurrent users
-- System availability >99.5%
-- Database connections <100
-- Memory usage <80%
-
-## Database Setup Instructions
-
-### Prerequisites
-- PostgreSQL 14+ installed and running
-- Python 3.8+ environment
-
-### Initial Setup
+### Manual Deployment
 ```bash
-# Initialize PostgreSQL database with test data
-python setup_postgresql_complete.py
+# Install dependencies
+pip install -r requirements.txt
 
-# Or use the basic initialization script
-python init_db.py
-
-# Run database migrations (if using Alembic)
+# Run migrations
 alembic upgrade head
+
+# Start with gunicorn
+gunicorn app.main:app \
+  --workers 4 \
+  --worker-class uvicorn.workers.UvicornWorker \
+  --bind 0.0.0.0:8000 \
+  --access-logfile - \
+  --error-logfile -
 ```
 
-### Configuration
-Update `.env` file with your database credentials:
-```env
-DATABASE_URL=postgresql+asyncpg://username:password@localhost:5432/akcn_db
+### Nginx Configuration
+```nginx
+server {
+    listen 80;
+    server_name api.your-domain.com;
+
+    location / {
+        proxy_pass http://localhost:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
 ```
 
-## Critical Implementation Notes
+## Monitoring & Maintenance
 
-### SQLAlchemy Async Patterns
-- Always use `datetime.now(timezone.utc)` instead of `datetime.utcnow()` to avoid greenlet errors
-- Import all models in `app/main.py` to prevent lazy loading issues
-- Use explicit database queries instead of relationship lazy loading in async context
-- Hybrid properties should check for loaded relationships to avoid N+1 queries
+### Health Checks
+- `/health` - Basic health check
+- `/health/db` - Database connectivity
+- `/health/redis` - Redis connectivity (if configured)
 
-### API Parameter Consistency
-- Use `{app_id}` instead of `{application_id}` for application endpoints
-- Use `{task_id}` for subtask endpoints
-- Follow RESTful conventions for all endpoints
+### Logging
+- Application logs: `logs/app.log`
+- Access logs: `logs/access.log`
+- Error logs: `logs/error.log`
 
-### Excel File Handling
-- Return actual file content with proper MIME type instead of file URLs
-- Use `Response` with `Content-Disposition` headers for downloads
-- Process Excel files in memory using `openpyxl` and `io.BytesIO`
+### Performance Metrics
+- Response time: Target <2s for 95% requests
+- Database connections: Monitor pool usage
+- Memory usage: Keep below 80%
+- CPU usage: Scale if consistently >70%
 
-### Production Deployment Requirements
-- FastAPI 0.104+
-- PostgreSQL 14+ with asyncpg driver
-- Redis 7.0+ (for future caching needs)
-- OpenPyXL for Excel processing
-- Uvicorn or Gunicorn with uvicorn workers
-- Proper CORS configuration for frontend integration
+### Backup Strategy
+- Database: Daily automated backups
+- Keep 30 days of backups
+- Test restore procedure monthly
+- Document restore process
 
-### Testing & Development
-- Use the standalone `production_server.py` for quick testing with in-memory data
-- Main application connects to PostgreSQL database
-- All endpoints support real data operations without mock responses
+## Troubleshooting
+
+### Common Issues
+
+#### Database Connection Errors
+```bash
+# Check PostgreSQL is running
+sudo systemctl status postgresql
+
+# Check connection settings
+psql -h localhost -U akcn_user -d akcn_dev_db
+
+# Verify .env configuration
+cat .env | grep DATABASE_URL
+```
+
+#### Migration Errors
+```bash
+# Check current revision
+alembic current
+
+# Show migration history
+alembic history
+
+# Create missing migration
+alembic revision --autogenerate -m "Fix migration"
+```
+
+#### Performance Issues
+```bash
+# Check slow queries
+SELECT * FROM pg_stat_statements
+ORDER BY total_time DESC LIMIT 10;
+
+# Check connection pool
+SELECT count(*) FROM pg_stat_activity;
+
+# Monitor memory usage
+python -m memory_profiler app.main
+```
+
+## Support & Resources
+
+### Documentation
+- API Documentation: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
+- OpenAPI Schema: http://localhost:8000/openapi.json
+
+### Development Resources
+- FastAPI: https://fastapi.tiangolo.com/
+- SQLAlchemy: https://www.sqlalchemy.org/
+- Alembic: https://alembic.sqlalchemy.org/
+- Pytest: https://docs.pytest.org/
+
+### Contact
+- Technical Lead: [Your Contact]
+- DevOps Team: [DevOps Contact]
+- Database Admin: [DBA Contact]
+
+## License
+
+[Your License Information]
+
+---
+
+*Last Updated: December 2024*
+*Version: 1.0.0*
