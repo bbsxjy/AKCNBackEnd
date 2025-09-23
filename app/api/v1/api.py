@@ -13,7 +13,8 @@ from app.api.v1.endpoints import (
     excel,
     reports,
     notifications,
-    dashboard
+    dashboard,
+    mcp
 )
 
 api_router = APIRouter()
@@ -28,3 +29,4 @@ api_router.include_router(excel.router, prefix="/excel", tags=["excel"])
 api_router.include_router(reports.router, prefix="/reports", tags=["reports"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
+api_router.include_router(mcp.router, prefix="/mcp", tags=["mcp"])
