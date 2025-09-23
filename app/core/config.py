@@ -20,7 +20,7 @@ class Settings(BaseSettings):
 
     # Database settings
     DATABASE_URL: str = Field(
-        default="postgresql+asyncpg://user:password@localhost/akcn_db",
+        default="postgresql+asyncpg://user:password@localhost/akcn_dev_db",
         description="PostgreSQL database connection URL"
     )
     TEST_DATABASE_URL: str = Field(

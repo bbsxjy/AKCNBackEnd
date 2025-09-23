@@ -1166,7 +1166,11 @@ class ExcelService:
                     if field_name == 'ak_supervision_acceptance_year':
                         # Extract year from strings like "2025年"
                         import re
-                        year_match = re.search(r'(\d{4})', value)
+                        # 处理datetime对象
+                        if isinstance(value, datetime.datetime):
+                            return value.year
+                        # 处理字符串类型
+                        year_match = re.search(r'(\d{4})', str(value))
                         if year_match:
                             return int(year_match.group(1))
                     elif field_name == 'app_tier':
