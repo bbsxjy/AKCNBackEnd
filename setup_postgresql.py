@@ -504,8 +504,8 @@ async def create_tables_and_data(skip_data=False):
                 if app.is_delayed:
                     notifications.append(Notification(
                         user_id=admin_user.id,
-                        title=f"Application Delayed: {app.app_name}",
-                        message=f"Application {app.l2_id} is delayed by {app.delay_days} days. Please review the timeline.",
+                        title=f"应用程序延迟: {app.app_name}",
+                        message=f"应用程序 {app.l2_id} 延迟了 {app.delay_days} 天。请检查时间表。",
                         type=NotificationType.WARNING,
                         is_read=False
                     ))

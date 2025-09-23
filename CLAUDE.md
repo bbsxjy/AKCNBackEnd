@@ -347,7 +347,7 @@ POST /notifications/create         # Create (admin only)
 
 #### users
 ```sql
-- id: UUID (PK)
+- id: Integer (PK, auto-increment)
 - sso_user_id: String (unique)
 - username: String (unique)
 - email: String (unique)
@@ -355,91 +355,117 @@ POST /notifications/create         # Create (admin only)
 - department: String
 - role: Enum (ADMIN, MANAGER, EDITOR, VIEWER)
 - is_active: Boolean
+- last_login_at: DateTime
 - created_at: DateTime
 - updated_at: DateTime
 ```
 
 #### applications
 ```sql
-- id: UUID (PK)
+- id: Integer (PK, auto-increment)
 - l2_id: String (unique, business key)
 - app_name: String
-- supervision_year: Integer
-- transformation_target: Enum (AK, CLOUD_NATIVE)
+- app_tier: Integer
+- belonging_l1_name: String
+- belonging_projects: String
+- belonging_kpi: String
+- ak_supervision_acceptance_year: Integer
+- overall_transformation_target: String
 - is_ak_completed: Boolean
 - is_cloud_native_completed: Boolean
-- current_stage: String
-- overall_status: Enum
-- responsible_team: String
-- responsible_person: String
-- progress_percentage: Float
-- planned_*_date: Date (requirement, release, tech_online, biz_online)
-- actual_*_date: Date (requirement, release, tech_online, biz_online)
+- is_domain_transformation_completed: Boolean
+- is_dbpm_transformation_completed: Boolean
+- current_transformation_phase: String
+- current_status: String
+- acceptance_status: String
+- dev_mode: String
+- ops_mode: String
+- dev_owner: String
+- dev_team: String
+- ops_owner: String
+- ops_team: String
+- planned_requirement_date: Date
+- planned_release_date: Date
+- planned_tech_online_date: Date
+- planned_biz_online_date: Date
+- actual_requirement_date: Date
+- actual_release_date: Date
+- actual_tech_online_date: Date
+- actual_biz_online_date: Date
 - is_delayed: Boolean
 - delay_days: Integer
 - notes: Text
-- created_by: UUID (FK users.id)
-- updated_by: UUID (FK users.id)
+- created_by: Integer (FK users.id)
+- updated_by: Integer (FK users.id)
 - created_at: DateTime
 - updated_at: DateTime
 ```
 
 #### sub_tasks
 ```sql
-- id: UUID (PK)
-- application_id: UUID (FK applications.id)
-- module_name: String
+- id: Integer (PK, auto-increment)
+- l2_id: Integer (FK applications.id via l2_id relationship)
+- app_name: String
 - sub_target: String
 - version_name: String
-- task_status: Enum
-- progress_percentage: Float
+- task_status: String
+- progress_percentage: Integer
 - is_blocked: Boolean
-- planned_*_date: Date (requirement, release, tech_online, biz_online)
-- actual_*_date: Date (requirement, release, tech_online, biz_online)
-- requirements: Text
-- technical_notes: Text
-- assigned_to: String
-- reviewer: String
-- priority: Integer (1-5)
-- estimated_hours: Integer
-- actual_hours: Integer
-- created_by: UUID (FK users.id)
-- updated_by: UUID (FK users.id)
+- block_reason: Text
+- resource_applied: Boolean
+- ops_requirement_submitted: DateTime
+- ops_testing_status: String
+- launch_check_status: String
+- planned_requirement_date: Date
+- planned_release_date: Date
+- planned_tech_online_date: Date
+- planned_biz_online_date: Date
+- actual_requirement_date: Date
+- actual_release_date: Date
+- actual_tech_online_date: Date
+- actual_biz_online_date: Date
+- notes: Text
+- created_by: Integer (FK users.id)
+- updated_by: Integer (FK users.id)
 - created_at: DateTime
 - updated_at: DateTime
 ```
 
 #### audit_logs
 ```sql
-- id: UUID (PK)
+- id: Integer (PK, auto-increment)
 - table_name: String
-- record_id: UUID
-- operation: Enum (INSERT, UPDATE, DELETE)
-- old_values: JSONB
-- new_values: JSONB
-- user_id: UUID (FK users.id)
+- record_id: Integer
+- operation: String (INSERT, UPDATE, DELETE)
+- old_values: JSON
+- new_values: JSON
+- changed_fields: JSON
+- request_id: String
 - user_ip: String
-- user_agent: String
+- user_agent: Text
+- reason: Text
+- extra_data: JSON
+- user_id: Integer (FK users.id)
 - created_at: DateTime
 ```
 
 #### notifications
 ```sql
-- id: UUID (PK)
-- user_id: UUID (FK users.id)
+- id: Integer (PK, auto-increment)
+- user_id: Integer (FK users.id)
 - title: String
 - message: Text
-- type: Enum (INFO, WARNING, ERROR, SUCCESS)
+- type: String (INFO, WARNING, ERROR, SUCCESS)
 - is_read: Boolean
-- read_at: DateTime
 - created_at: DateTime
+- updated_at: DateTime
 ```
 
 ### Relationships
-- Application ↔ SubTasks: One-to-Many
+- Application ↔ SubTasks: One-to-Many (via l2_id)
 - User ↔ Applications: Many-to-Many (created_by, updated_by)
-- User ↔ SubTasks: Many-to-Many (created_by, updated_by, assigned_to)
-- All tables → AuditLogs: Polymorphic relationship
+- User ↔ SubTasks: Many-to-Many (created_by, updated_by)
+- All tables → AuditLogs: Polymorphic relationship via record_id
 
 ## Development Guidelines
 
