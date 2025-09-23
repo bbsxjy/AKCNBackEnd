@@ -8,8 +8,16 @@ from pydantic import BaseModel
 
 from app.api.deps import get_current_user, get_db
 from app.models.user import User
-from app.mcp.client import MCPClient
-from app.mcp.tools import get_all_tools
+# Lazy import to avoid MCP dependency issues
+def get_mcp_tools():
+    """Lazy load MCP tools to avoid import issues."""
+    try:
+        from app.mcp.tools import get_all_tools
+        return get_all_tools()
+    except ImportError:
+        logger.warning("MCP module not available")
+        return []
+
 from app.mcp.handlers import (
     handle_database_query,
     handle_application_operation,
@@ -51,7 +59,7 @@ async def list_mcp_tools(
     
     This endpoint provides access to MCP tools without needing MCP client.
     """
-    tools = get_all_tools()
+    tools = get_mcp_tools()
     return [
         {
             "name": tool.name,
@@ -168,5 +176,5 @@ async def mcp_health_check() -> Dict[str, str]:
     return {
         "status": "healthy",
         "integration": "direct_api",
-        "tools_count": str(len(get_all_tools()))
+        "tools_count": str(len(get_mcp_tools()))
     }

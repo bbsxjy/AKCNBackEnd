@@ -65,3 +65,8 @@ def get_sync_session():
         yield db
     finally:
         db.close()
+
+
+def get_db_context():
+    """Get database context for use with async context manager."""
+    return AsyncSessionLocal
