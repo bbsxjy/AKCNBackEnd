@@ -74,6 +74,9 @@ pydantic-openapi-schema==1.5.1
 # Windows-specific (optional)
 pywin32==308  # Windows only, comment out for Linux/Mac
 
+# MCP (Model Context Protocol)
+mcp==1.0.0
+
 # Optional monitoring (production)
 # sentry-sdk[fastapi]==2.19.0
 # prometheus-client==0.21.0

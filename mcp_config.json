@@ -1,0 +1,49 @@
+{
+  "mcpServers": {
+    "akcn-backend": {
+      "command": "python",
+      "args": ["-m", "app.mcp.run_server"],
+      "env": {
+        "PYTHONPATH": ".",
+        "DATABASE_URL": "postgresql+asyncpg://akcn_user:akcn_password@localhost:5432/akcn_dev_db"
+      },
+      "description": "AKCN Project Management Backend MCP Server",
+      "capabilities": {
+        "tools": true
+      }
+    }
+  },
+  "tools": {
+    "database": [
+      "db_query",
+      "db_get_schema"
+    ],
+    "applications": [
+      "app_list",
+      "app_get",
+      "app_create",
+      "app_update"
+    ],
+    "subtasks": [
+      "task_list",
+      "task_create",
+      "task_batch_update"
+    ],
+    "excel": [
+      "excel_import",
+      "excel_export"
+    ],
+    "calculations": [
+      "calc_progress",
+      "calc_delays"
+    ],
+    "audit": [
+      "audit_get_logs",
+      "audit_rollback"
+    ],
+    "dashboard": [
+      "dashboard_stats",
+      "dashboard_export"
+    ]
+  }
+}
