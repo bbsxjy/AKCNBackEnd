@@ -396,21 +396,27 @@ class ExcelService:
         """Import applications from Excel file."""
 
         try:
+            print(f"[INFO] Starting import_applications_from_excel")
+            
             # Load workbook
             workbook = load_workbook(io.BytesIO(file_content), data_only=True)
+            print(f"[INFO] Loaded workbook with sheets: {workbook.sheetnames}")
 
             # Process the first worksheet or find Applications sheet
             sheet_name = self._find_applications_sheet(workbook)
+            print(f"[INFO] Using applications sheet: {sheet_name}")
             worksheet = workbook[sheet_name]
 
             # Convert to DataFrame
             df = self._worksheet_to_dataframe(worksheet, self.config.APPLICATION_FIELDS)
+            print(f"[INFO] Applications DataFrame shape: {df.shape}")
+            print(f"[INFO] Applications DataFrame columns: {list(df.columns)}")
 
             # Validate data
             validation_errors = await self._validate_applications_data(db, df)
-            print(f"DEBUG: Validation errors count: {len(validation_errors)}")
+            print(f"[INFO] Validation errors count: {len(validation_errors)}")
             if validation_errors:
-                print(f"DEBUG: First few validation errors: {validation_errors[:3]}")
+                print(f"[WARNING] First few validation errors: {validation_errors[:3]}")
 
             if validation_errors and not validate_only:
                 return {
@@ -429,12 +435,15 @@ class ExcelService:
                 }
 
             # Additional debugging before import
-            print(f"DEBUG: About to import applications with DataFrame columns: {list(df.columns)}")
+            print(f"[INFO] About to import {len(df)} application rows")
             if 'app_name' in df.columns and len(df) > 0:
-                print(f"DEBUG: First 3 app_name values: {list(df['app_name'].head(3))}")
+                print(f"[DEBUG] First 3 app_name values: {list(df['app_name'].head(3))}")
 
             # Import data
+            print(f"[INFO] Starting data import...")
             results = await self._import_applications_data(db, df, user)
+            print(f"[INFO] Import completed successfully")
+            print(f"[INFO] Results: imported={results['imported']}, updated={results['updated']}, skipped={results['skipped']}")
 
             return {
                 'success': True,
@@ -446,6 +455,9 @@ class ExcelService:
             }
 
         except Exception as e:
+            print(f"[ERROR] Exception in import_applications_from_excel: {e}")
+            import traceback
+            traceback.print_exc()
             return {
                 'success': False,
                 'error': str(e),
@@ -497,7 +509,15 @@ class ExcelService:
                     all_validation_errors.extend([{**error, 'sheet': '总追踪表'} for error in app_validation_errors])
 
                     if not validate_only and len(app_validation_errors) == 0:
-                        app_results = await self._import_applications_data(db, app_df, user)
+                        print(f"[INFO] Starting import of {total_app_rows} applications...")
+                        try:
+                            app_results = await self._import_applications_data(db, app_df, user)
+                            print(f"[INFO] Applications import completed: {app_results}")
+                        except Exception as e:
+                            print(f"[ERROR] Failed to import applications: {e}")
+                            import traceback
+                            traceback.print_exc()
+                            raise
                 else:
                     print(f"DEBUG: No application data found in worksheet {app_sheet_name}")
 
@@ -560,9 +580,11 @@ class ExcelService:
                 }
 
             # Combine results for response
+            print(f"[INFO] Combining results...")
             total_imported = app_results['imported'] + subtask_results['imported']
             total_updated = app_results['updated'] + subtask_results['updated']
             total_skipped = app_results['skipped'] + subtask_results['skipped']
+            print(f"[INFO] Total results: imported={total_imported}, updated={total_updated}, skipped={total_skipped}")
 
             return {
                 'success': True,
@@ -586,7 +608,9 @@ class ExcelService:
             }
 
         except Exception as e:
-            print(f"DEBUG: Exception in import_subtasks_from_excel: {e}")
+            print(f"[ERROR] Exception in import_subtasks_from_excel: {e}")
+            import traceback
+            traceback.print_exc()
             return {
                 'success': False,
                 'error': str(e),
@@ -1684,10 +1708,41 @@ class ExcelService:
 
                         for field, value in row.items():
                             if field in application_model_fields and value is not None and value != '' and hasattr(existing_app, field):
-                                # Handle NaN values
-                                if pd.isna(value):
-                                    continue  # Skip NaN values
-                                setattr(existing_app, field, value)
+                                try:
+                                    # Handle NaN values
+                                    if pd.isna(value):
+                                        continue  # Skip NaN values
+                                    
+                                    # Handle date fields
+                                    if field in self.config.DATE_FIELDS:
+                                        if isinstance(value, str):
+                                            # Try to parse date string
+                                            from datetime import datetime
+                                            try:
+                                                value = datetime.strptime(value, '%Y-%m-%d').date()
+                                            except:
+                                                try:
+                                                    value = datetime.strptime(value, '%Y/%m/%d').date()
+                                                except:
+                                                    print(f"[WARNING] Could not parse date '{value}' for field {field}, skipping")
+                                                    continue
+                                        elif isinstance(value, datetime):
+                                            value = value.date()
+                                    
+                                    # Handle boolean fields
+                                    elif field in self.config.BOOLEAN_FIELDS:
+                                        if isinstance(value, str):
+                                            value = value.lower() in ['true', 'yes', '是', '1', 't', 'y']
+                                    
+                                    # Handle integer fields
+                                    elif field in self.config.INTEGER_FIELDS:
+                                        if pd.notna(value):
+                                            value = int(float(value))  # Convert through float to handle decimals
+                                    
+                                    setattr(existing_app, field, value)
+                                except Exception as e:
+                                    print(f"[WARNING] Error setting field {field} with value '{value}': {e}")
+                                    continue
 
                         existing_app.updated_by = user_id
                         updated_applications.append(existing_app)
@@ -1709,10 +1764,40 @@ class ExcelService:
 
                         for k, v in row.items():
                             if k in application_model_fields and v is not None and v != '':
-                                # Handle NaN values
-                                if pd.isna(v):
-                                    continue  # Skip NaN values
-                                app_data[k] = v
+                                try:
+                                    # Handle NaN values
+                                    if pd.isna(v):
+                                        continue  # Skip NaN values
+                                    
+                                    # Handle date fields
+                                    if k in self.config.DATE_FIELDS:
+                                        if isinstance(v, str):
+                                            from datetime import datetime
+                                            try:
+                                                v = datetime.strptime(v, '%Y-%m-%d').date()
+                                            except:
+                                                try:
+                                                    v = datetime.strptime(v, '%Y/%m/%d').date()
+                                                except:
+                                                    print(f"[WARNING] Could not parse date '{v}' for field {k}, skipping")
+                                                    continue
+                                        elif isinstance(v, datetime):
+                                            v = v.date()
+                                    
+                                    # Handle boolean fields
+                                    elif k in self.config.BOOLEAN_FIELDS:
+                                        if isinstance(v, str):
+                                            v = v.lower() in ['true', 'yes', '是', '1', 't', 'y']
+                                    
+                                    # Handle integer fields
+                                    elif k in self.config.INTEGER_FIELDS:
+                                        if pd.notna(v):
+                                            v = int(float(v))  # Convert through float to handle decimals
+                                    
+                                    app_data[k] = v
+                                except Exception as e:
+                                    print(f"[WARNING] Error processing field {k} with value '{v}': {e}")
+                                    continue
 
                         app_data['created_by'] = user_id
                         app_data['updated_by'] = user_id
@@ -1734,7 +1819,7 @@ class ExcelService:
                         imported += 1
 
                 except Exception as e:
-                    print(f"Error processing application row {index + 2}: {e}")
+                    print(f"[ERROR] Failed processing application row {index + 2} (L2_ID: {row.get('l2_id', 'unknown')}): {e}")
                     import traceback
                     traceback.print_exc()
                     skipped += 1
@@ -1742,19 +1827,25 @@ class ExcelService:
 
             # Add all new applications in batch
             if new_applications:
-                print(f"DEBUG: Adding {len(new_applications)} new applications...")
+                print(f"[INFO] Adding {len(new_applications)} new applications to session...")
                 for app in new_applications:
-                    db.add(app)
+                    try:
+                        db.add(app)
+                    except Exception as e:
+                        print(f"[ERROR] Failed to add application {app.l2_id}: {e}")
+                        raise
+                print(f"[INFO] All new applications added to session successfully")
 
             # Commit all changes at once
+            print(f"[INFO] Committing {imported} new and {updated} updated applications...")
             await db.commit()
-            print(f"DEBUG: Successfully committed all application changes")
+            print(f"[INFO] Successfully committed all application changes")
 
         except Exception as e:
             # Restore autoflush and rollback on error
             db.autoflush = original_autoflush
             await db.rollback()
-            print(f"ERROR: Failed to import applications: {e}")
+            print(f"[ERROR] Failed to import applications: {e}")
             import traceback
             traceback.print_exc()
             raise
@@ -1764,9 +1855,9 @@ class ExcelService:
             db.autoflush = original_autoflush
 
         # Log final statistics
-        print(f"DEBUG: Import completed - Imported: {imported}, Updated: {updated}, Skipped: {skipped}")
+        print(f"[INFO] Import statistics - Imported: {imported}, Updated: {updated}, Skipped: {skipped}")
         if skipped > 0:
-            print(f"DEBUG: {skipped} rows were skipped")
+            print(f"[WARNING] {skipped} rows were skipped during import")
 
         return {
             'imported': imported,
