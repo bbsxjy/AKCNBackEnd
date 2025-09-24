@@ -17,12 +17,11 @@ async def test_excel_import():
     # Login first to get token
     async with aiohttp.ClientSession() as session:
         # Login
-        login_data = {
-            "username": "admin@test.com",
-            "password": "test123"
-        }
+        login_form = aiohttp.FormData()
+        login_form.add_field('username', 'admin@test.com')
+        login_form.add_field('password', 'test123')
         
-        async with session.post(f"{base_url}/api/v1/auth/login", json=login_data) as resp:
+        async with session.post(f"{base_url}/api/v1/auth/login", data=login_form) as resp:
             if resp.status != 200:
                 print(f"Login failed: {await resp.text()}")
                 return

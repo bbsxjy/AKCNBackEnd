@@ -1191,7 +1191,10 @@ class ExcelService:
                         # Extract year from strings like "2025年"
                         import re
                         # 处理datetime对象
-                        if isinstance(value, datetime.datetime):
+                        if isinstance(value, datetime):
+                            return value.year
+                        # 处理date对象
+                        if isinstance(value, date):
                             return value.year
                         # 处理字符串类型
                         year_match = re.search(r'(\d{4})', str(value))
@@ -1717,7 +1720,6 @@ class ExcelService:
                                     if field in self.config.DATE_FIELDS:
                                         if isinstance(value, str):
                                             # Try to parse date string
-                                            from datetime import datetime
                                             try:
                                                 value = datetime.strptime(value, '%Y-%m-%d').date()
                                             except:
@@ -1772,7 +1774,6 @@ class ExcelService:
                                     # Handle date fields
                                     if k in self.config.DATE_FIELDS:
                                         if isinstance(v, str):
-                                            from datetime import datetime
                                             try:
                                                 v = datetime.strptime(v, '%Y-%m-%d').date()
                                             except:
