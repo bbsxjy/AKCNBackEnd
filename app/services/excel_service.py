@@ -1739,7 +1739,25 @@ class ExcelService:
                                     # Handle integer fields
                                     elif field in self.config.INTEGER_FIELDS:
                                         if pd.notna(value):
-                                            value = int(float(value))  # Convert through float to handle decimals
+                                            # Special handling for year field which might be a datetime
+                                            if field == 'ak_supervision_acceptance_year':
+                                                if isinstance(value, datetime):
+                                                    value = value.year
+                                                elif isinstance(value, date):
+                                                    value = value.year
+                                                elif isinstance(value, str):
+                                                    # Extract year from string like "2025年" or "2025"
+                                                    import re
+                                                    year_match = re.search(r'(\d{4})', value)
+                                                    if year_match:
+                                                        value = int(year_match.group(1))
+                                                    else:
+                                                        print(f"[WARNING] Could not extract year from '{value}', skipping")
+                                                        continue
+                                                else:
+                                                    value = int(float(value))  # Normal numeric conversion
+                                            else:
+                                                value = int(float(value))  # Convert through float to handle decimals
                                     
                                     setattr(existing_app, field, value)
                                 except Exception as e:
@@ -1793,7 +1811,25 @@ class ExcelService:
                                     # Handle integer fields
                                     elif k in self.config.INTEGER_FIELDS:
                                         if pd.notna(v):
-                                            v = int(float(v))  # Convert through float to handle decimals
+                                            # Special handling for year field which might be a datetime
+                                            if k == 'ak_supervision_acceptance_year':
+                                                if isinstance(v, datetime):
+                                                    v = v.year
+                                                elif isinstance(v, date):
+                                                    v = v.year
+                                                elif isinstance(v, str):
+                                                    # Extract year from string like "2025年" or "2025"
+                                                    import re
+                                                    year_match = re.search(r'(\d{4})', v)
+                                                    if year_match:
+                                                        v = int(year_match.group(1))
+                                                    else:
+                                                        print(f"[WARNING] Could not extract year from '{v}', skipping")
+                                                        continue
+                                                else:
+                                                    v = int(float(v))  # Normal numeric conversion
+                                            else:
+                                                v = int(float(v))  # Convert through float to handle decimals
                                     
                                     app_data[k] = v
                                 except Exception as e:
