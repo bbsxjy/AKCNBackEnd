@@ -64,6 +64,14 @@ class ApplicationCreate(ApplicationBase):
     planned_release_date: Optional[date] = Field(None, description="Planned release date")
     planned_tech_online_date: Optional[date] = Field(None, description="Planned tech online date")
     planned_biz_online_date: Optional[date] = Field(None, description="Planned biz online date")
+    
+    @validator('planned_requirement_date', 'planned_release_date', 'planned_tech_online_date', 
+               'planned_biz_online_date', pre=True)
+    def empty_str_to_none_date(cls, v):
+        """Convert empty string to None for date fields."""
+        if v == '':
+            return None
+        return v
 
     @validator('planned_release_date')
     def validate_release_after_requirement(cls, v, values):
@@ -128,6 +136,15 @@ class ApplicationUpdate(BaseModel):
     actual_release_date: Optional[date] = Field(None, description="Actual release date")
     actual_tech_online_date: Optional[date] = Field(None, description="Actual tech online date")
     actual_biz_online_date: Optional[date] = Field(None, description="Actual biz online date")
+    
+    @validator('planned_requirement_date', 'planned_release_date', 'planned_tech_online_date', 
+               'planned_biz_online_date', 'actual_requirement_date', 'actual_release_date',
+               'actual_tech_online_date', 'actual_biz_online_date', pre=True)
+    def empty_str_to_none_date(cls, v):
+        """Convert empty string to None for date fields."""
+        if v == '':
+            return None
+        return v
 
     @validator('app_name')
     def validate_app_name(cls, v):

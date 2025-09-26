@@ -43,6 +43,14 @@ class SubTaskCreate(SubTaskBase):
     resource_applied: bool = Field(False, description="Resource applied")
     ops_testing_status: Optional[str] = Field(None, description="Ops testing status")
     launch_check_status: Optional[str] = Field(None, description="Launch check status")
+    
+    @validator('planned_requirement_date', 'planned_release_date', 'planned_tech_online_date', 
+               'planned_biz_online_date', pre=True)
+    def empty_str_to_none_date(cls, v):
+        """Convert empty string to None for date fields."""
+        if v == '':
+            return None
+        return v
 
     @validator('planned_release_date')
     def validate_release_after_requirement(cls, v, values):
@@ -62,6 +70,7 @@ class SubTaskUpdate(BaseModel):
     block_reason: Optional[str] = Field(None, description="Block reason")
     app_name: Optional[str] = Field(None, description="Application name")
     notes: Optional[str] = Field(None, description="Notes")
+    plan_change_reason: Optional[str] = Field(None, description="Reason for plan changes")
 
     # Tracking fields
     resource_applied: Optional[bool] = Field(None, description="Resource applied")
@@ -80,6 +89,22 @@ class SubTaskUpdate(BaseModel):
     actual_release_date: Optional[date] = Field(None)
     actual_tech_online_date: Optional[date] = Field(None)
     actual_biz_online_date: Optional[date] = Field(None)
+    
+    @validator('ops_requirement_submitted', pre=True)
+    def empty_str_to_none_datetime(cls, v):
+        """Convert empty string to None for datetime fields."""
+        if v == '':
+            return None
+        return v
+    
+    @validator('planned_requirement_date', 'planned_release_date', 'planned_tech_online_date', 
+               'planned_biz_online_date', 'actual_requirement_date', 'actual_release_date',
+               'actual_tech_online_date', 'actual_biz_online_date', pre=True)
+    def empty_str_to_none_date(cls, v):
+        """Convert empty string to None for date fields."""
+        if v == '':
+            return None
+        return v
 
 
 class SubTaskResponse(BaseModel):
@@ -112,6 +137,22 @@ class SubTaskResponse(BaseModel):
     ops_testing_status: Optional[str] = None
     launch_check_status: Optional[str] = None
     notes: Optional[str] = None
+    plan_change_reason: Optional[str] = None
+    plan_change_history: Optional[str] = None  # JSON string
+
+    @validator('plan_change_history', pre=True)
+    def convert_json_to_string(cls, v):
+        """Convert JSON/list to string for plan_change_history."""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            return v
+        # Convert list/dict to JSON string
+        import json
+        try:
+            return json.dumps(v, ensure_ascii=False)
+        except:
+            return "[]"
 
     # Computed fields
     is_completed: bool = False

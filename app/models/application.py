@@ -113,7 +113,8 @@ class Application(Base):
             return 0  # Return 0 if not loaded to avoid lazy loading
         if not self.subtasks:
             return 0
-        return len([st for st in self.subtasks if st.task_status == "已完成"])
+        # Use the correct status value from SubTaskStatus enum
+        return len([st for st in self.subtasks if st.task_status == "子任务完成"])
 
     @property
     def completion_rate(self) -> float:

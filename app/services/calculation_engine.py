@@ -439,16 +439,15 @@ class CalculationEngine:
 
         if not subtasks:
             # No subtasks - status based on dates or remains as is
-            application.progress_percentage = 0
+            # Note: progress_percentage is a calculated property based on subtasks
             application.is_ak_completed = False
             application.is_cloud_native_completed = False
             application.is_delayed = False
             application.delay_days = 0
             return
 
-        # Calculate progress based on subtasks
-        total_progress = sum(st.progress_percentage for st in subtasks)
-        application.progress_percentage = int(total_progress / len(subtasks))
+        # Note: progress_percentage is automatically calculated from subtasks completion rate
+        # We don't need to set it directly as it's a @property
 
         # Calculate completed subtasks
         completed_subtasks = [st for st in subtasks if st.task_status == SubTaskStatus.COMPLETED]
@@ -464,12 +463,40 @@ class CalculationEngine:
         else:
             application.current_status = ApplicationStatus.DEV_IN_PROGRESS
 
-        # Update transformation target completion
+        # Update planned dates based on subtasks' maximum dates
+        # Calculate the latest date for each phase across all subtasks
+        planned_requirement_dates = [st.planned_requirement_date for st in subtasks if st.planned_requirement_date]
+        planned_release_dates = [st.planned_release_date for st in subtasks if st.planned_release_date]
+        planned_tech_online_dates = [st.planned_tech_online_date for st in subtasks if st.planned_tech_online_date]
+        planned_biz_online_dates = [st.planned_biz_online_date for st in subtasks if st.planned_biz_online_date]
+        
+        # Update application planned dates with the maximum (latest) date from subtasks
+        if planned_requirement_dates:
+            application.planned_requirement_date = max(planned_requirement_dates)
+        if planned_release_dates:
+            application.planned_release_date = max(planned_release_dates)
+        if planned_tech_online_dates:
+            application.planned_tech_online_date = max(planned_tech_online_dates)
+        if planned_biz_online_dates:
+            application.planned_biz_online_date = max(planned_biz_online_dates)
+
+        # Calculate AK/Cloud Native completion status
+        # Based on the Excel formula logic:
+        # Count subtasks by transformation target (sub_target)
         ak_subtasks = [st for st in subtasks if st.sub_target == "AK"]
         cn_subtasks = [st for st in subtasks if st.sub_target == "云原生"]
-
-        application.is_ak_completed = all(st.task_status == SubTaskStatus.COMPLETED for st in ak_subtasks) if ak_subtasks else False
-        application.is_cloud_native_completed = all(st.task_status == SubTaskStatus.COMPLETED for st in cn_subtasks) if cn_subtasks else False
+        
+        # AK is completed if all AK subtasks are completed
+        if ak_subtasks:
+            application.is_ak_completed = all(st.task_status == SubTaskStatus.COMPLETED for st in ak_subtasks)
+        else:
+            application.is_ak_completed = False
+            
+        # Cloud Native is completed if all Cloud Native subtasks are completed
+        if cn_subtasks:
+            application.is_cloud_native_completed = all(st.task_status == SubTaskStatus.COMPLETED for st in cn_subtasks)
+        else:
+            application.is_cloud_native_completed = False
 
         # Calculate delay status
         today = date.today()

@@ -37,7 +37,8 @@
       "Bash(del test_subtasks.xlsx)",
       "Bash(pytest:*)",
       "Bash(del:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []

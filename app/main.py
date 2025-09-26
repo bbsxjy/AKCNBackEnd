@@ -58,11 +58,24 @@ async def health_check():
     return {"status": "healthy", "version": settings.APP_VERSION}
 
 
+@app.on_event("startup")
+async def startup_event():
+    """Initialize logging on application startup."""
+    from app.core.logging_config import configure_logging
+    configure_logging(settings)
+
+
 if __name__ == "__main__":
     import uvicorn
+    from app.core.logging_config import configure_logging
+    
+    # Configure logging before starting the server
+    configure_logging(settings)
+    
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
         port=8000,
-        reload=settings.DEBUG
+        reload=settings.DEBUG,
+        log_config=None  # Disable uvicorn's default logging config
     )

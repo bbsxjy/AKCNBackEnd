@@ -49,6 +49,7 @@ class ExcelMappingConfig:
         # 用户指定的精确中文列名映射
         'L2ID': 'l2_id',
         'L2应用': 'app_name',
+        'L2应用名': 'app_name',
         '监管验收年份': 'ak_supervision_acceptance_year',
         '改造目标': 'overall_transformation_target',
         '是否已完成AK': 'is_ak_completed',
@@ -255,6 +256,7 @@ class ExcelMappingConfig:
         # 用户指定的精确中文列名映射 (子追踪表)
         'L2ID': 'l2_id',
         'L2应用': 'app_name',
+        'L2应用名': 'app_name',
         '子目标': 'sub_target',
         '版本名': 'version_name',
         '改造状态': 'task_status',
@@ -681,7 +683,7 @@ class ExcelService:
         # Write data
         for row_num, subtask in enumerate(subtasks, start=2):
             for col_num, (header, field) in enumerate(self.config.SUBTASK_FIELDS.items(), start=1):
-                if field == 'l2_id':  # 修正：不再是application_l2_id
+                if field == 'l2_id':  
                     # 获取关联的Application的l2_id
                     value = subtask.application.l2_id if subtask.application else ''
                 elif field == 'app_name':
@@ -765,7 +767,7 @@ class ExcelService:
             'application', 'module', 'status', 'progress', 'date', 'team', 'person',
             '版本', '目标', '阶段', '团队', '百分比', 'name', 'target', '序号',
             '系统', '监管', '改造', '开发', '上线', '发布', '需求', '档位', '所属',
-            '模式', '指标', '验收', '【计划】', '【实际】', 'L2ID', 'L2应用',
+            '模式', '指标', '验收', '【计划】', '【实际】', 'L2ID', 'L2应用', "L2应用名",
             'l2_id', 'app_name', 'sub_target', 'version_name', 'task_status'  # Add English field names
         ]
 
@@ -1840,12 +1842,8 @@ class ExcelService:
                         app_data['updated_by'] = user_id
 
                         # Set defaults
-                        if 'dev_team' not in app_data or not app_data['dev_team']:
-                            app_data['dev_team'] = '待分配'
                         if 'app_name' not in app_data or not app_data['app_name']:
                             app_data['app_name'] = '未命名应用'
-                        if 'ak_supervision_acceptance_year' not in app_data or not app_data['ak_supervision_acceptance_year']:
-                            app_data['ak_supervision_acceptance_year'] = 2024
                         if 'overall_transformation_target' not in app_data or not app_data['overall_transformation_target']:
                             app_data['overall_transformation_target'] = 'AK'
                         if 'current_status' not in app_data or not app_data['current_status']:

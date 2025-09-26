@@ -90,6 +90,22 @@ class SubTaskService:
             user_id=created_by,
             reason="SubTask created"
         )
+        
+        # Recalculate parent application status and dates after creating new subtask
+        from app.services.calculation_engine import CalculationEngine
+        calc_engine = CalculationEngine()
+        # Reload application with subtasks to ensure we have all data
+        result = await db.execute(
+            select(Application)
+            .options(selectinload(Application.subtasks))
+            .where(Application.id == application.id)
+        )
+        app = result.scalar_one_or_none()
+        
+        if app:
+            await calc_engine._calculate_application_metrics(app)
+            app.updated_at = datetime.now(timezone.utc)
+            await db.commit()
 
         return db_subtask
 
@@ -118,6 +134,9 @@ class SubTaskService:
 
         # Store old values for audit
         old_values = self._serialize_subtask(db_subtask)
+        
+        # Store the application ID for later recalculation
+        application_id = db_subtask.l2_id
 
         # Update fields
         update_data = subtask_data.model_dump(exclude_unset=True)
@@ -132,11 +151,103 @@ class SubTaskService:
         if 'task_status' in update_data:
             await self._auto_update_progress_by_status(db_subtask, update_data['task_status'])
 
+        # Check if we need to recalculate before committing
+        should_recalculate = False
+        date_fields = ['planned_requirement_date', 'planned_release_date', 
+                      'planned_tech_online_date', 'planned_biz_online_date',
+                      'actual_requirement_date', 'actual_release_date',
+                      'actual_tech_online_date', 'actual_biz_online_date']
+        status_fields = ['task_status', 'sub_target', 'progress_percentage']
+        
+        if any(field in update_data for field in date_fields + status_fields):
+            should_recalculate = True
+        
+        # Handle plan change history
+        import json
+        if any(field in update_data for field in date_fields) and 'plan_change_reason' in update_data:
+            # Load existing history or create new
+            history = []
+            if db_subtask.plan_change_history:
+                try:
+                    history = json.loads(db_subtask.plan_change_history)
+                except:
+                    history = []
+            
+            # Add new change record
+            change_record = {
+                'date': datetime.now(timezone.utc).isoformat(),
+                'user_id': updated_by,
+                'reason': update_data.get('plan_change_reason', ''),
+                'changes': {}
+            }
+            
+            # Record what dates changed
+            for field in date_fields:
+                if field in update_data:
+                    old_val = getattr(db_subtask, field)
+                    new_val = update_data[field]
+                    if old_val != new_val:
+                        change_record['changes'][field] = {
+                            'from': str(old_val) if old_val else None,
+                            'to': str(new_val) if new_val else None
+                        }
+            
+            if change_record['changes']:
+                history.append(change_record)
+                db_subtask.plan_change_history = json.dumps(history, ensure_ascii=False)
+
         await db.commit()
         await db.refresh(db_subtask)
 
-        # Create audit log
+        # Create detailed audit log with change reasons
         new_values = self._serialize_subtask(db_subtask)
+        
+        # Build detailed reason for audit
+        reason_parts = []
+        
+        # Check for date changes and build clear change descriptions
+        date_changes = []
+        date_field_names = {
+            'planned_requirement_date': '计划需求日期',
+            'planned_release_date': '计划发版日期', 
+            'planned_tech_online_date': '计划技术上线日期',
+            'planned_biz_online_date': '计划业务上线日期',
+            'actual_requirement_date': '实际需求日期',
+            'actual_release_date': '实际发版日期',
+            'actual_tech_online_date': '实际技术上线日期',
+            'actual_biz_online_date': '实际业务上线日期'
+        }
+        
+        for field, display_name in date_field_names.items():
+            if field in update_data:
+                old_val = old_values.get(field)
+                new_val = new_values.get(field)
+                if old_val != new_val:
+                    date_changes.append(f"{display_name}: {old_val or '未设置'} → {new_val or '未设置'}")
+        
+        if date_changes:
+            reason_parts.append("时间调整: " + "; ".join(date_changes))
+        
+        # Check for status change
+        if 'task_status' in update_data:
+            old_status = old_values.get('task_status')
+            new_status = new_values.get('task_status')
+            if old_status != new_status:
+                reason_parts.append(f"状态变更: {old_status} → {new_status}")
+        
+        # Include notes/change reason if provided
+        if 'notes' in update_data and update_data['notes']:
+            # Extract change reason from notes if it contains specific markers
+            notes = update_data['notes']
+            if '计划变更' in notes or '延期' in notes or '调整' in notes:
+                reason_parts.append(f"变更原因: {notes}")
+        
+        # Build final reason string
+        if reason_parts:
+            reason = "子任务更新 - " + "; ".join(reason_parts)
+        else:
+            reason = "SubTask updated"
+        
         await self.audit_service.create_audit_log(
             db=db,
             table_name="sub_tasks",
@@ -145,8 +256,61 @@ class SubTaskService:
             old_values=old_values,
             new_values=new_values,
             user_id=updated_by,
-            reason="SubTask updated"
+            reason=reason
         )
+        
+        # Recalculate parent application status and dates if needed
+        if should_recalculate:
+            from app.services.calculation_engine import CalculationEngine
+            calc_engine = CalculationEngine()
+            # Get fresh application with subtasks to avoid detached instance issues
+            result = await db.execute(
+                select(Application)
+                .options(selectinload(Application.subtasks))
+                .where(Application.id == application_id)
+            )
+            application = result.scalar_one_or_none()
+            
+            if application:
+                # Store old application values for comparison
+                old_app_values = {
+                    'planned_requirement_date': application.planned_requirement_date,
+                    'planned_release_date': application.planned_release_date,
+                    'planned_tech_online_date': application.planned_tech_online_date,
+                    'planned_biz_online_date': application.planned_biz_online_date,
+                    'is_ak_completed': application.is_ak_completed,
+                    'is_cloud_native_completed': application.is_cloud_native_completed,
+                    'current_status': application.current_status,
+                    'is_delayed': application.is_delayed,
+                    'delay_days': application.delay_days
+                }
+                
+                # Recalculate metrics
+                await calc_engine._calculate_application_metrics(application)
+                
+                # Check if anything actually changed
+                has_changes = False
+                for field in old_app_values:
+                    if getattr(application, field) != old_app_values[field]:
+                        has_changes = True
+                        break
+                
+                # Only update and create audit log if there were actual changes
+                if has_changes:
+                    application.updated_at = datetime.now(timezone.utc)
+                    await db.commit()
+                    
+                    # Create a system audit log for auto-calculation
+                    await self.audit_service.create_audit_log(
+                        db=db,
+                        table_name="applications",
+                        record_id=application.id,
+                        operation=AuditOperation.UPDATE,
+                        old_values=old_app_values,
+                        new_values={k: getattr(application, k) for k in old_app_values},
+                        user_id=updated_by,
+                        reason=f"系统自动重算 - 子任务更新触发 (子任务ID: {db_subtask.id})"
+                    )
 
         return db_subtask
 
@@ -158,6 +322,9 @@ class SubTaskService:
 
         # Store old values for audit
         old_values = self._serialize_subtask(db_subtask)
+        
+        # Store the application ID for later recalculation
+        application_id = db_subtask.l2_id
 
         await db.delete(db_subtask)
         await db.commit()
@@ -174,6 +341,22 @@ class SubTaskService:
                 user_id=deleted_by,
                 reason="SubTask deleted"
             )
+        
+        # Recalculate parent application status and dates after deleting subtask
+        from app.services.calculation_engine import CalculationEngine
+        calc_engine = CalculationEngine()
+        # Get fresh application with subtasks
+        result = await db.execute(
+            select(Application)
+            .options(selectinload(Application.subtasks))
+            .where(Application.id == application_id)
+        )
+        application = result.scalar_one_or_none()
+        
+        if application:
+            await calc_engine._calculate_application_metrics(application)
+            application.updated_at = datetime.now(timezone.utc)
+            await db.commit()
 
         return True
 
@@ -348,10 +531,14 @@ class SubTaskService:
     ) -> int:
         """Bulk update multiple subtasks."""
         updated_count = 0
+        affected_applications = set()
 
         for subtask_id in bulk_update.subtask_ids:
             subtask = await self.get_subtask(db, subtask_id)
             if subtask:
+                # Store application ID for recalculation
+                affected_applications.add(subtask.l2_id)
+                
                 # Apply updates
                 update_data = bulk_update.updates.model_dump(exclude_unset=True)
                 for field, value in update_data.items():
@@ -367,6 +554,27 @@ class SubTaskService:
                 updated_count += 1
 
         await db.commit()
+        
+        # Recalculate all affected applications
+        if affected_applications:
+            from app.services.calculation_engine import CalculationEngine
+            calc_engine = CalculationEngine()
+            for app_id in affected_applications:
+                # Get fresh application with subtasks
+                result = await db.execute(
+                    select(Application)
+                    .options(selectinload(Application.subtasks))
+                    .where(Application.id == app_id)
+                )
+                application = result.scalar_one_or_none()
+                
+                if application:
+                    await calc_engine._calculate_application_metrics(application)
+                    application.updated_at = datetime.now(timezone.utc)
+            
+            # Commit all application updates at once
+            await db.commit()
+        
         return updated_count
 
     async def bulk_update_status(
@@ -377,10 +585,14 @@ class SubTaskService:
     ) -> int:
         """Bulk update status for multiple subtasks."""
         updated_count = 0
+        affected_applications = set()
 
         for subtask_id in bulk_status_update.subtask_ids:
             subtask = await self.get_subtask(db, subtask_id)
             if subtask:
+                # Store application ID for recalculation
+                affected_applications.add(subtask.l2_id)
+                
                 subtask.task_status = bulk_status_update.new_status
                 subtask.updated_by = updated_by
                 subtask.updated_at = datetime.now(timezone.utc)
@@ -392,6 +604,27 @@ class SubTaskService:
                 updated_count += 1
 
         await db.commit()
+        
+        # Recalculate all affected applications
+        if affected_applications:
+            from app.services.calculation_engine import CalculationEngine
+            calc_engine = CalculationEngine()
+            for app_id in affected_applications:
+                # Get fresh application with subtasks
+                result = await db.execute(
+                    select(Application)
+                    .options(selectinload(Application.subtasks))
+                    .where(Application.id == app_id)
+                )
+                application = result.scalar_one_or_none()
+                
+                if application:
+                    await calc_engine._calculate_application_metrics(application)
+                    application.updated_at = datetime.now(timezone.utc)
+            
+            # Commit all application updates at once
+            await db.commit()
+        
         return updated_count
 
     async def update_progress(
@@ -405,6 +638,9 @@ class SubTaskService:
         subtask = await self.get_subtask(db, subtask_id)
         if not subtask:
             return None
+        
+        # Store the application ID for later recalculation
+        application_id = subtask.l2_id
 
         # Update progress
         subtask.progress_percentage = progress_update.progress_percentage
@@ -431,6 +667,23 @@ class SubTaskService:
 
         await db.commit()
         await db.refresh(subtask)
+        
+        # Recalculate parent application status and dates after progress update
+        from app.services.calculation_engine import CalculationEngine
+        calc_engine = CalculationEngine()
+        # Get fresh application with subtasks
+        result = await db.execute(
+            select(Application)
+            .options(selectinload(Application.subtasks))
+            .where(Application.id == application_id)
+        )
+        application = result.scalar_one_or_none()
+        
+        if application:
+            await calc_engine._calculate_application_metrics(application)
+            application.updated_at = datetime.now(timezone.utc)
+            await db.commit()
+        
         return subtask
 
     async def get_blocked_subtasks(self, db: AsyncSession) -> List[SubTask]:

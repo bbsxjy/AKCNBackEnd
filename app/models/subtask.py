@@ -61,6 +61,10 @@ class SubTask(Base):
 
     # Notes
     notes = Column(Text, nullable=True)
+    
+    # Plan change tracking
+    plan_change_reason = Column(Text, nullable=True)
+    plan_change_history = Column(Text, nullable=True)  # JSON stored as text
 
     # Audit fields
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)

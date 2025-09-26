@@ -166,6 +166,10 @@ class Settings(BaseSettings):
         default="json",
         description="Log format (json or text)"
     )
+    LOG_SQL: bool = Field(
+        default=False,
+        description="Enable SQL query logging (performance impact)"
+    )
 
     # Monitoring settings
     SENTRY_DSN: str = Field(

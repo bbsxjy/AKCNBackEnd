@@ -19,7 +19,7 @@ sync_engine = create_engine(
 # Create async engine for PostgreSQL
 async_engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=settings.DEBUG,
+    echo=settings.LOG_SQL,  # Separate control for SQL logging
     pool_pre_ping=True,
     pool_size=20,
     max_overflow=40,
