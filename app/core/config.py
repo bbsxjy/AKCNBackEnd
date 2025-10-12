@@ -21,7 +21,15 @@ class Settings(BaseSettings):
     # Database settings
     DATABASE_URL: str = Field(
         default="postgresql+asyncpg://user:password@localhost/akcn_dev_db",
-        description="PostgreSQL database connection URL"
+        description="PostgreSQL database connection URL (Primary/Write)"
+    )
+    DATABASE_READ_URL: str = Field(
+        default="",
+        description="PostgreSQL read replica URL (if empty, uses DATABASE_URL)"
+    )
+    ENABLE_READ_WRITE_SPLIT: bool = Field(
+        default=False,
+        description="Enable read/write splitting"
     )
     TEST_DATABASE_URL: str = Field(
         default="sqlite:///./test.db",

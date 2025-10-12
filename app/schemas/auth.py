@@ -4,7 +4,7 @@ Authentication Pydantic schemas
 
 from typing import Optional
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
 
 
 class Token(BaseModel):
@@ -54,8 +54,7 @@ class UserInfo(BaseModel):
     created_at: datetime = Field(..., description="Account creation time")
     last_login: Optional[datetime] = Field(None, description="Last login time")
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PermissionCheck(BaseModel):

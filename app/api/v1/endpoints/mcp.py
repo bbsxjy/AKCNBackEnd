@@ -4,168 +4,218 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
 from app.models.user import User
-# Lazy import to avoid MCP dependency issues
-def get_mcp_tools():
-    """Lazy load MCP tools to avoid import issues."""
-    try:
-        from app.mcp.tools import get_all_tools
-        return get_all_tools()
-    except ImportError:
-        logger.warning("MCP module not available")
-        return []
-
-from app.mcp.handlers import (
-    handle_database_query,
-    handle_application_operation,
-    handle_subtask_operation,
-    handle_excel_operation,
-    handle_calculation_service,
-    handle_audit_operation,
-    handle_dashboard_stats
+from app.schemas.mcp import (
+    MCPToolsListResponse,
+    MCPExecuteRequest,
+    MCPExecuteResponse,
+    MCPQueryRequest,
+    MCPQueryResponse,
+    MCPSchemaResponse,
+    MCPSQLQueryRequest,
+    MCPSQLQueryResponse,
+    MCPTool
 )
+from app.services.mcp_service import mcp_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-class MCPToolRequest(BaseModel):
-    """Request model for MCP tool execution."""
-    tool_name: str
-    arguments: Optional[Dict[str, Any]] = {}
-
-
-class MCPToolResponse(BaseModel):
-    """Response model for MCP tool execution."""
-    success: bool
-    data: Any
-    error: Optional[str] = None
-
-
-class MCPQueryRequest(BaseModel):
-    """Request for natural language query."""
-    query: str
-    context: Optional[Dict[str, Any]] = {}
-
-
-@router.get("/tools", response_model=List[Dict[str, Any]])
+@router.get("/tools", response_model=MCPToolsListResponse)
 async def list_mcp_tools(
     current_user: User = Depends(get_current_user)
-) -> List[Dict[str, Any]]:
+) -> MCPToolsListResponse:
     """List all available MCP tools.
-    
+
     This endpoint provides access to MCP tools without needing MCP client.
+
+    **权限**: All authenticated users
     """
-    tools = get_mcp_tools()
-    return [
-        {
-            "name": tool.name,
-            "description": tool.description,
-            "inputSchema": tool.inputSchema
-        }
-        for tool in tools
-    ]
+    try:
+        tools = mcp_service.get_all_tools()
+        return MCPToolsListResponse(tools=tools)
+    except Exception as e:
+        logger.error(f"Error getting MCP tools: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="获取工具列表失败"
+        )
 
 
-@router.post("/execute", response_model=MCPToolResponse)
+@router.post("/execute", response_model=MCPExecuteResponse)
 async def execute_mcp_tool(
-    request: MCPToolRequest,
+    request: MCPExecuteRequest,
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
-) -> MCPToolResponse:
+) -> MCPExecuteResponse:
     """Execute an MCP tool directly via API.
-    
+
     This allows you to use MCP tools without running a separate MCP server.
+
+    **权限**: All authenticated users (some tools require specific permissions)
     """
+    import time
+    start_time = time.time()
+
     try:
         tool_name = request.tool_name
         arguments = request.arguments
-        
+
         logger.info(f"Executing MCP tool: {tool_name} for user: {current_user.username}")
-        
-        # Route to appropriate handler
-        if tool_name.startswith("db_"):
-            result = await handle_database_query(tool_name, arguments)
-        elif tool_name.startswith("app_"):
-            result = await handle_application_operation(tool_name, arguments)
-        elif tool_name.startswith("task_"):
-            result = await handle_subtask_operation(tool_name, arguments)
-        elif tool_name.startswith("excel_"):
-            result = await handle_excel_operation(tool_name, arguments)
-        elif tool_name.startswith("calc_"):
-            result = await handle_calculation_service(tool_name, arguments)
-        elif tool_name.startswith("audit_"):
-            result = await handle_audit_operation(tool_name, arguments)
-        elif tool_name.startswith("dashboard_"):
-            result = await handle_dashboard_stats(tool_name, arguments)
-        else:
-            raise ValueError(f"Unknown tool: {tool_name}")
-        
-        # Check if result indicates an error
-        if isinstance(result, dict) and "error" in result:
-            return MCPToolResponse(
-                success=False,
-                data=None,
-                error=result["error"]
+
+        # Route to appropriate handler based on tool name
+        result = None
+        error = None
+
+        # For now, we implement basic tools. More can be added later
+        if tool_name == "db_query":
+            result = await mcp_service.execute_sql_query(
+                db=db,
+                query=arguments.get("query", ""),
+                params=arguments.get("params")
             )
-        
-        return MCPToolResponse(
-            success=True,
-            data=result
+            if "error" in result:
+                error = result["error"]
+                result = None
+
+        elif tool_name == "db_get_schema":
+            result = await mcp_service.get_database_schema(
+                table_name=arguments.get("table_name")
+            )
+            if "error" in result:
+                error = result["error"]
+                result = None
+
+        else:
+            error = f"工具 '{tool_name}' 尚未实现"
+
+        execution_time = time.time() - start_time
+
+        return MCPExecuteResponse(
+            success=error is None,
+            result=result,
+            execution_time=execution_time,
+            error=error
         )
-        
+
     except Exception as e:
         logger.error(f"Error executing MCP tool: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+        execution_time = time.time() - start_time
+        return MCPExecuteResponse(
+            success=False,
+            result=None,
+            execution_time=execution_time,
+            error=str(e)
         )
 
 
-@router.post("/query", response_model=MCPToolResponse)
+@router.post("/query/applications", response_model=MCPQueryResponse)
 async def natural_language_query(
     request: MCPQueryRequest,
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
-) -> MCPToolResponse:
+) -> MCPQueryResponse:
     """Process natural language query using MCP tools.
-    
+
     This endpoint can interpret natural language and execute appropriate tools.
+
+    **权限**: All authenticated users
     """
     try:
-        # This is a simplified version - you can enhance with AI
-        query = request.query.lower()
-        
-        # Simple pattern matching for demo
-        if "list" in query and "application" in query:
-            tool_name = "app_list"
-            arguments = {"limit": 100}
-        elif "delayed" in query:
-            tool_name = "calc_delays"
-            arguments = {"include_details": True}
-        elif "progress" in query:
-            tool_name = "dashboard_stats"
-            arguments = {"stat_type": "progress_trend"}
-        elif "summary" in query or "statistic" in query:
-            tool_name = "dashboard_stats"
-            arguments = {"stat_type": "summary"}
-        else:
-            # Default to database query
-            tool_name = "db_query"
-            arguments = {"query": f"SELECT * FROM applications LIMIT 10"}
-        
-        # Execute the determined tool
-        return await execute_mcp_tool(
-            MCPToolRequest(tool_name=tool_name, arguments=arguments),
-            current_user
+        # Parse natural language to tool and arguments
+        parsed = mcp_service.parse_natural_language_query(request.query)
+        tool_name = parsed["tool_name"]
+        arguments = parsed["arguments"]
+
+        # Execute the tool
+        exec_request = MCPExecuteRequest(
+            tool_name=tool_name,
+            arguments=arguments
         )
-        
+        exec_result = await execute_mcp_tool(exec_request, db, current_user)
+
+        return MCPQueryResponse(
+            success=exec_result.success,
+            result=exec_result.result or {},
+            query_interpretation=f"执行工具: {tool_name}, 参数: {arguments}"
+        )
+
     except Exception as e:
         logger.error(f"Error processing natural language query: {e}")
-        return MCPToolResponse(
+        return MCPQueryResponse(
             success=False,
-            data=None,
+            result={},
+            query_interpretation=f"查询失败: {str(e)}"
+        )
+
+
+@router.get("/schema", response_model=MCPSchemaResponse)
+async def get_database_schema(
+    table_name: Optional[str] = None,
+    current_user: User = Depends(get_current_user)
+) -> MCPSchemaResponse:
+    """Get database schema information.
+
+    **权限**: All authenticated users
+    """
+    try:
+        result = await mcp_service.get_database_schema(table_name)
+        if "error" in result:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result["error"]
+            )
+        return MCPSchemaResponse(**result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting database schema: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="获取数据库架构失败"
+        )
+
+
+@router.post("/query", response_model=MCPSQLQueryResponse)
+async def execute_sql_query(
+    request: MCPSQLQueryRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> MCPSQLQueryResponse:
+    """Execute a read-only SQL query.
+
+    **权限**: All authenticated users
+    **安全**: 只允许 SELECT 语句
+    """
+    try:
+        result = await mcp_service.execute_sql_query(
+            db=db,
+            query=request.query,
+            params=request.params
+        )
+
+        if "error" in result:
+            return MCPSQLQueryResponse(
+                success=False,
+                result=None,
+                error=result["error"]
+            )
+
+        return MCPSQLQueryResponse(
+            success=True,
+            result=result,
+            error=None
+        )
+
+    except Exception as e:
+        logger.error(f"Error executing SQL query: {e}")
+        return MCPSQLQueryResponse(
+            success=False,
+            result=None,
             error=str(e)
         )
 
@@ -176,5 +226,5 @@ async def mcp_health_check() -> Dict[str, str]:
     return {
         "status": "healthy",
         "integration": "direct_api",
-        "tools_count": str(len(get_mcp_tools()))
+        "tools_count": str(len(mcp_service.get_all_tools()))
     }

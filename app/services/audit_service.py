@@ -908,3 +908,55 @@ class AuditService:
                 value = value.isoformat()
             result[column.name] = value
         return result
+
+    async def log_action(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        action: str,
+        resource_type: str,
+        resource_id: int,
+        details: Optional[str] = None,
+        old_values: Optional[Dict[str, Any]] = None,
+        new_values: Optional[Dict[str, Any]] = None
+    ) -> AuditLog:
+        """
+        Simplified method to log an action.
+
+        Args:
+            db: Database session
+            user_id: User performing the action
+            action: Action type (CREATE, UPDATE, DELETE)
+            resource_type: Type of resource (user, application, etc.)
+            resource_id: ID of the resource
+            details: Optional description
+            old_values: Optional old values
+            new_values: Optional new values
+
+        Returns:
+            Created audit log
+        """
+        # Map action strings to AuditOperation enum
+        operation_map = {
+            "CREATE": AuditOperation.INSERT,
+            "UPDATE": AuditOperation.UPDATE,
+            "DELETE": AuditOperation.DELETE,
+            "INSERT": AuditOperation.INSERT
+        }
+
+        operation = operation_map.get(action.upper(), AuditOperation.UPDATE)
+
+        return await self.create_audit_log(
+            db=db,
+            table_name=resource_type,
+            record_id=resource_id,
+            operation=operation,
+            old_values=old_values,
+            new_values=new_values,
+            user_id=user_id,
+            reason=details
+        )
+
+
+# Create singleton instance
+audit_service = AuditService()

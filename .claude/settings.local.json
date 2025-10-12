@@ -38,7 +38,8 @@
       "Bash(pytest:*)",
       "Bash(del:*)",
       "Bash(mkdir:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(alembic revision:*)"
     ],
     "deny": [],
     "ask": []

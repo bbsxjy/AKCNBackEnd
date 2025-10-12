@@ -89,10 +89,14 @@ class Application(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
+    # Optimistic locking
+    version = Column(Integer, default=1, nullable=False)
+
     # Relationships
     creator = relationship("User", foreign_keys=[created_by], back_populates="created_applications")
     updater = relationship("User", foreign_keys=[updated_by], back_populates="updated_applications")
     subtasks = relationship("SubTask", back_populates="application", lazy="select", cascade="all, delete-orphan")
+    task_assignments = relationship("TaskAssignment", back_populates="application", lazy="select", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Application(id={self.id}, l2_id='{self.l2_id}', name='{self.app_name}', status='{self.current_status}')>"

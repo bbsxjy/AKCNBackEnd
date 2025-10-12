@@ -1040,3 +1040,6 @@ class NotificationService:
             "success_rate": round(success_rate, 2),
             "last_updated": datetime.utcnow().isoformat()
         }
+
+# Create singleton instance
+notification_service = NotificationService()

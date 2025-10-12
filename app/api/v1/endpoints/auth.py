@@ -17,7 +17,9 @@ from app.schemas.auth import (
     UserLogin,
     UserInfo
 )
+from app.schemas.menu import MenuPermissionsResponse
 from app.services.auth_service import auth_service
+from app.services.menu_service import menu_service
 from app.core.config import settings
 
 router = APIRouter()
@@ -282,10 +284,47 @@ async def check_permission(
         resource=resource,
         action=action
     )
-    
+
     return {
         "user_id": current_user.id,
         "resource": resource,
         "action": action,
         "has_permission": has_permission
     }
+
+
+@router.get("/menu-permissions", response_model=MenuPermissionsResponse)
+async def get_menu_permissions(
+    current_user: User = Depends(deps.get_current_active_user)
+) -> MenuPermissionsResponse:
+    """
+    Get menu permissions for current user based on their role.
+
+    Returns menu structure with items accessible to the user:
+    - admin: Full access to all menus
+    - manager: Access to most menus except user management and audit
+    - editor: Access to common and data management features
+    - viewer: Limited read-only access
+
+    Response includes:
+    - user_role: Current user's role
+    - menu_groups: List of menu groups with items
+
+    Each menu item includes:
+    - id: Unique identifier
+    - name: Route name for frontend routing
+    - title: Display name (Chinese)
+    - path: Route path
+    - icon: Element Plus icon name
+    - order: Display order within group
+    - enabled: Whether menu is enabled
+    - badge (optional): Badge text
+    - badge_type (optional): Badge type (success/warning/danger/info)
+    """
+    try:
+        return menu_service.get_user_menu_permissions(current_user)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get menu permissions: {str(e)}"
+        )

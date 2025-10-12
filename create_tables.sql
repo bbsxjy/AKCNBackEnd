@@ -1,5 +1,5 @@
 -- =====================================
--- AKCN数据库表创建脚本
+-- AKCN数据库表创建脚本 - akcn_dev_db
 -- =====================================
 
 -- 删除已存在的表（如果需要）
@@ -10,8 +10,8 @@ DROP TABLE IF EXISTS applications CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 
 -- 创建用户角色枚举类型
-DROP TYPE IF EXISTS user_role_enum CASCADE;
-CREATE TYPE user_role_enum AS ENUM ('ADMIN', 'MANAGER', 'EDITOR', 'VIEWER');
+DROP TYPE IF EXISTS userrole CASCADE;
+CREATE TYPE userrole AS ENUM ('ADMIN', 'MANAGER', 'EDITOR', 'VIEWER');
 
 -- =====================================
 -- 1. 用户表
@@ -23,7 +23,7 @@ CREATE TABLE users (
     full_name VARCHAR(100),
     email VARCHAR(200),
     department VARCHAR(100),
-    role user_role_enum DEFAULT 'VIEWER',
+    role userrole DEFAULT 'VIEWER',
     is_active BOOLEAN DEFAULT true,
     last_login_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,

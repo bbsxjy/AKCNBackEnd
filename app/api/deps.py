@@ -166,8 +166,8 @@ async def get_current_admin_user(
     user_role = current_user.role
     if hasattr(user_role, 'value'):
         user_role = user_role.value
-    
-    if user_role != "Admin":
+
+    if user_role != "admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions. Admin role required."
@@ -185,8 +185,8 @@ async def get_current_manager_user(
     user_role = current_user.role
     if hasattr(user_role, 'value'):
         user_role = user_role.value
-    
-    if user_role not in ["Admin", "Manager"]:
+
+    if user_role not in ["admin", "manager"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions. Manager or Admin role required."
@@ -204,8 +204,8 @@ async def get_current_editor_user(
     user_role = current_user.role
     if hasattr(user_role, 'value'):
         user_role = user_role.value
-    
-    if user_role not in ["Admin", "Manager", "Editor"]:
+
+    if user_role not in ["admin", "manager", "editor"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions. Editor, Manager or Admin role required."

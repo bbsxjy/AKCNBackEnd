@@ -72,6 +72,9 @@ class SubTask(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
+    # Optimistic locking (use lock_version to avoid conflict with version_name)
+    lock_version = Column(Integer, default=1, nullable=False)
+
     # Relationships
     application = relationship("Application", back_populates="subtasks")
     creator = relationship("User", foreign_keys=[created_by])
