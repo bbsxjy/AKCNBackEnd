@@ -481,21 +481,43 @@ class CalculationEngine:
             application.planned_biz_online_date = max(planned_biz_online_dates)
 
         # Calculate AK/Cloud Native completion status
-        # Based on the Excel formula logic:
+        # Based on the Excel formula logic provided by user:
+        # 【AK公式】=IF(COUNTIFS(子追踪表!$A:$A,$B6,子追踪表!$J:$J,"AK")>0,
+        #            IF(COUNTIFS(子追踪表!$A:$A,$B6,子追踪表!$J:$J,"AK",子追踪表!$L:$L,"子任务完成")
+        #               =COUNTIFS(子追踪表!$A:$A,$B6,子追踪表!$J:$J,"AK"),"是","否"),
+        #            IF(COUNTIFS(子追踪表!$A:$A,$B6,子追踪表!$J:$J,"云原生")>0,
+        #               IF(COUNTIFS(子追踪表!$A:$A,$B6,子追踪表!$J:$J,"云原生",子追踪表!$L:$L,"子任务完成")
+        #                  =COUNTIFS(子追踪表!$A:$A,$B6,子追踪表!$J:$J,"云原生"),"是","否"),"否"))
+        #
+        # Logic:
+        # - If has AK subtasks -> check if all AK subtasks completed
+        # - Else if has Cloud Native subtasks -> check if all Cloud Native subtasks completed
+        # - Else -> False
+
         # Count subtasks by transformation target (sub_target)
         ak_subtasks = [st for st in subtasks if st.sub_target == "AK"]
         cn_subtasks = [st for st in subtasks if st.sub_target == "云原生"]
-        
-        # AK is completed if all AK subtasks are completed
+
+        # AK completion logic (matches Excel formula)
         if ak_subtasks:
+            # Has AK subtasks - check if all are completed
             application.is_ak_completed = all(st.task_status == SubTaskStatus.COMPLETED for st in ak_subtasks)
+        elif cn_subtasks:
+            # No AK subtasks, but has Cloud Native subtasks - check if all Cloud Native completed
+            application.is_ak_completed = all(st.task_status == SubTaskStatus.COMPLETED for st in cn_subtasks)
         else:
+            # No subtasks at all
             application.is_ak_completed = False
-            
-        # Cloud Native is completed if all Cloud Native subtasks are completed
+
+        # Cloud Native completion logic (matches Excel formula)
+        # 【云原生公式】=IF(COUNTIFS(子追踪表!$A:$A,$B6,子追踪表!$J:$J,"云原生")>0,
+        #              IF(COUNTIFS(子追踪表!$A:$A,$B6,子追踪表!$J:$J,"云原生",子追踪表!$L:$L,"子任务完成")
+        #                 =COUNTIFS(子追踪表!$A:$A,$B6,子追踪表!$J:$J,"云原生"),"是","否"),"否")
         if cn_subtasks:
+            # Has Cloud Native subtasks - check if all are completed
             application.is_cloud_native_completed = all(st.task_status == SubTaskStatus.COMPLETED for st in cn_subtasks)
         else:
+            # No Cloud Native subtasks
             application.is_cloud_native_completed = False
 
         # Calculate delay status

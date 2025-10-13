@@ -1986,20 +1986,30 @@ class ExcelService:
 
                     # Only check existing subtasks if application already exists
                     if application_id > 0:  # Positive IDs are existing applications
-                        # Check if subtask exists (based on l2_id and sub_target)
-                        stmt = select(SubTask).where(
-                            and_(
-                                SubTask.l2_id == application_id,
-                                SubTask.sub_target == row.get('sub_target')
-                            )
-                        )
+                        # Check if subtask exists (based on l2_id, sub_target, and version_name for uniqueness)
+                        version_name = row.get('version_name')
+                        sub_target = row.get('sub_target')
+
+                        # Build query conditions
+                        conditions = [
+                            SubTask.l2_id == application_id,
+                            SubTask.sub_target == sub_target
+                        ]
+
+                        # Add version_name condition - handle both NULL and non-NULL cases
+                        if version_name:
+                            conditions.append(SubTask.version_name == version_name)
+                        else:
+                            conditions.append(SubTask.version_name.is_(None))
+
+                        stmt = select(SubTask).where(and_(*conditions))
                         result = await db.execute(stmt)
                         existing_subtask = result.scalar_one_or_none()
 
                         if existing_subtask:
                             # Update existing subtask
                             subtask_model_fields = {
-                                'sub_target', 'version_name', 'task_status',
+                                'app_name', 'sub_target', 'version_name', 'task_status',
                                 'progress_percentage', 'is_blocked', 'block_reason',
                                 'planned_requirement_date', 'planned_release_date', 'planned_tech_online_date', 'planned_biz_online_date',
                                 'actual_requirement_date', 'actual_release_date', 'actual_tech_online_date', 'actual_biz_online_date',
@@ -2031,7 +2041,7 @@ class ExcelService:
                     # Create new subtask
                     subtask_data = {}
                     subtask_model_fields = {
-                        'sub_target', 'version_name', 'task_status',
+                        'app_name', 'sub_target', 'version_name', 'task_status',
                         'progress_percentage', 'is_blocked', 'block_reason',
                         'planned_requirement_date', 'planned_release_date', 'planned_tech_online_date', 'planned_biz_online_date',
                         'actual_requirement_date', 'actual_release_date', 'actual_tech_online_date', 'actual_biz_online_date',
@@ -2124,6 +2134,31 @@ class ExcelService:
             # Commit all changes at once
             await db.commit()
             print(f"DEBUG: Successfully committed all changes")
+
+            # After successful import, recalculate application status based on subtasks
+            print(f"DEBUG: Recalculating application metrics after import...")
+            from app.services.calculation_engine import CalculationEngine
+            calc_engine = CalculationEngine()
+
+            # Get unique application IDs that were affected
+            affected_app_ids = set()
+            for subtask in updated_subtasks:
+                affected_app_ids.add(subtask.l2_id)
+            for subtask_data in new_subtasks:
+                app_l2_id = subtask_data.get('_app_l2_id')
+                if app_l2_id:
+                    real_app_id = app_id_map.get(app_l2_id)
+                    if real_app_id and real_app_id > 0:
+                        affected_app_ids.add(real_app_id)
+
+            print(f"DEBUG: Recalculating {len(affected_app_ids)} applications...")
+            for app_id in affected_app_ids:
+                try:
+                    await calc_engine.recalculate_application_status(db, app_id)
+                except Exception as calc_error:
+                    print(f"WARNING: Failed to recalculate application {app_id}: {calc_error}")
+
+            print(f"DEBUG: Application metrics recalculation completed")
 
         except Exception as e:
             # Restore autoflush and rollback on error

@@ -3,6 +3,7 @@ SubTask model
 """
 
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, Date
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import enum
@@ -61,10 +62,10 @@ class SubTask(Base):
 
     # Notes
     notes = Column(Text, nullable=True)
-    
+
     # Plan change tracking
     plan_change_reason = Column(Text, nullable=True)
-    plan_change_history = Column(Text, nullable=True)  # JSON stored as text
+    plan_change_history = Column(JSONB, nullable=True)  # JSON stored as JSONB
 
     # Audit fields
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
