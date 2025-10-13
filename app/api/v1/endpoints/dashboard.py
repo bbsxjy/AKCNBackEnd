@@ -26,10 +26,14 @@ async def get_dashboard_stats(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Get dashboard statistics data.
+    Get dashboard statistics data with accurate transformation completion tracking.
 
-    Returns overall statistics for applications including counts by status,
-    average progress, and blocking information.
+    Returns overall statistics for applications including:
+    - Total and active application counts
+    - Status breakdown
+    - AK/Cloud Native completion statistics (using is_ak_completed, is_cloud_native_completed)
+    - Progress metrics
+    - Blocking information
     """
     try:
         # Build base query
@@ -37,7 +41,7 @@ async def get_dashboard_stats(
 
         # Apply team filter if provided
         if team:
-            query = query.where(Application.responsible_team == team)
+            query = query.where(Application.dev_team == team)
 
         # Apply period filter if provided
         if period:
@@ -59,14 +63,41 @@ async def get_dashboard_stats(
         total_applications = len(applications)
         active_applications = sum(
             1 for app in applications
-            if app.overall_status in [
+            if app.current_status in [
                 ApplicationStatus.DEV_IN_PROGRESS,
                 ApplicationStatus.BIZ_ONLINE
             ]
         )
         completed_applications = sum(
             1 for app in applications
-            if app.overall_status == ApplicationStatus.COMPLETED
+            if app.current_status == ApplicationStatus.COMPLETED
+        )
+
+        # ✅ Use accurate completion flags
+        ak_completed_applications = sum(1 for app in applications if app.is_ak_completed)
+        cloud_native_completed_applications = sum(1 for app in applications if app.is_cloud_native_completed)
+        both_completed_applications = sum(
+            1 for app in applications
+            if app.is_ak_completed and app.is_cloud_native_completed
+        )
+
+        # Calculate completion rates
+        ak_target_apps = sum(
+            1 for app in applications
+            if app.overall_transformation_target in ["AK", "AK+云原生"]
+        )
+        cn_target_apps = sum(
+            1 for app in applications
+            if app.overall_transformation_target in ["云原生", "AK+云原生"]
+        )
+
+        ak_completion_rate = (
+            round((ak_completed_applications / ak_target_apps) * 100, 2)
+            if ak_target_apps > 0 else 0.0
+        )
+        cloud_native_completion_rate = (
+            round((cloud_native_completed_applications / cn_target_apps) * 100, 2)
+            if cn_target_apps > 0 else 0.0
         )
 
         # Get blocked applications count
@@ -76,13 +107,13 @@ async def get_dashboard_stats(
             app_ids = [app.id for app in applications]
             subtask_query = select(SubTask).where(
                 and_(
-                    SubTask.application_id.in_(app_ids),
+                    SubTask.l2_id.in_(app_ids),
                     SubTask.is_blocked == True
                 )
             )
             subtask_result = await db.execute(subtask_query)
             blocked_subtasks = subtask_result.scalars().all()
-            blocked_apps = {st.application_id for st in blocked_subtasks}
+            blocked_apps = {st.l2_id for st in blocked_subtasks}
 
         blocked_applications = len(blocked_apps)
 
@@ -91,6 +122,9 @@ async def get_dashboard_stats(
             sum(app.progress_percentage for app in applications) / total_applications
             if total_applications > 0 else 0
         )
+
+        # Get delayed applications count
+        delayed_applications = sum(1 for app in applications if app.is_delayed)
 
         # Get last update time
         last_updated = max(
@@ -103,6 +137,16 @@ async def get_dashboard_stats(
             "active_applications": active_applications,
             "completed_applications": completed_applications,
             "blocked_applications": blocked_applications,
+            "delayed_applications": delayed_applications,
+            # ✅ Accurate transformation completion metrics
+            "ak_completed_applications": ak_completed_applications,
+            "cloud_native_completed_applications": cloud_native_completed_applications,
+            "both_completed_applications": both_completed_applications,
+            "ak_target_applications": ak_target_apps,
+            "cloud_native_target_applications": cn_target_apps,
+            "ak_completion_rate": ak_completion_rate,
+            "cloud_native_completion_rate": cloud_native_completion_rate,
+            # Other metrics
             "average_progress": round(average_progress, 2),
             "last_updated": last_updated.isoformat()
         }
@@ -245,9 +289,13 @@ async def get_department_distribution(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Get department application distribution and progress.
+    Get department application distribution and progress with accurate transformation completion tracking.
 
-    Returns statistics grouped by department/team.
+    Returns statistics grouped by department/team including:
+    - Application counts
+    - Progress metrics
+    - AK/Cloud Native completion statistics (using is_ak_completed, is_cloud_native_completed)
+    - Blocking information
     """
     try:
         # Query all applications
@@ -259,7 +307,7 @@ async def get_department_distribution(
         department_stats = {}
 
         for app in applications:
-            team_name = app.responsible_team
+            team_name = app.dev_team if app.dev_team else "未分配"
 
             if team_name not in department_stats:
                 department_stats[team_name] = {
@@ -268,6 +316,10 @@ async def get_department_distribution(
                     "total_progress": 0,
                     "completed_count": 0,
                     "blocked_count": 0,
+                    # ✅ Add accurate transformation completion tracking
+                    "ak_completed_count": 0,
+                    "cloud_native_completed_count": 0,
+                    "both_completed_count": 0,
                     "applications": []
                 }
 
@@ -278,8 +330,18 @@ async def get_department_distribution(
             if include_progress:
                 stats["total_progress"] += app.progress_percentage
 
-                if app.overall_status == ApplicationStatus.COMPLETED:
+                if app.current_status == ApplicationStatus.COMPLETED:
                     stats["completed_count"] += 1
+
+                # ✅ Track transformation completion
+                if app.is_ak_completed:
+                    stats["ak_completed_count"] += 1
+
+                if app.is_cloud_native_completed:
+                    stats["cloud_native_completed_count"] += 1
+
+                if app.is_ak_completed and app.is_cloud_native_completed:
+                    stats["both_completed_count"] += 1
 
         # Check for blocked applications if progress is included
         if include_progress:
@@ -289,7 +351,7 @@ async def get_department_distribution(
             blocked_subtasks = blocked_result.scalars().all()
 
             # Map blocked subtasks to applications
-            blocked_app_ids = {st.application_id for st in blocked_subtasks}
+            blocked_app_ids = {st.l2_id for st in blocked_subtasks}
 
             # Update blocked counts
             for team_name, stats in department_stats.items():
@@ -313,7 +375,11 @@ async def get_department_distribution(
                 dept_data.update({
                     "average_progress": round(avg_progress, 2),
                     "completed_count": stats["completed_count"],
-                    "blocked_count": stats["blocked_count"]
+                    "blocked_count": stats["blocked_count"],
+                    # ✅ Include accurate transformation completion metrics
+                    "ak_completed_count": stats["ak_completed_count"],
+                    "cloud_native_completed_count": stats["cloud_native_completed_count"],
+                    "both_completed_count": stats["both_completed_count"]
                 })
 
             departments.append(dept_data)

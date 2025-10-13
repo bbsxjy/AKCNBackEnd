@@ -26,7 +26,7 @@ class DashboardService:
         end_date: Optional[date] = None
     ) -> Dict[str, Any]:
         """
-        Get comprehensive application metrics.
+        Get comprehensive application metrics with accurate transformation completion tracking.
 
         Args:
             db: Database session
@@ -36,7 +36,14 @@ class DashboardService:
             end_date: End date for filtering
 
         Returns:
-            Dictionary containing various metrics
+            Dictionary containing various metrics including:
+            - Total applications
+            - Status breakdown
+            - Transformation target breakdown
+            - AK completion statistics
+            - Cloud Native completion statistics
+            - Average progress
+            - Delay tracking
         """
         # Build base query
         query = select(Application)
@@ -78,7 +85,12 @@ class DashboardService:
                 "by_target": {},
                 "average_progress": 0,
                 "delayed_count": 0,
-                "on_track_count": 0
+                "on_track_count": 0,
+                "ak_completed_count": 0,
+                "cloud_native_completed_count": 0,
+                "both_completed_count": 0,
+                "ak_completion_rate": 0.0,
+                "cloud_native_completion_rate": 0.0
             }
 
         # Status breakdown
@@ -86,6 +98,13 @@ class DashboardService:
         target_counts = {}
         delayed_count = 0
         total_progress = 0
+
+        # ✅ Accurate transformation completion tracking
+        ak_completed_count = 0
+        cloud_native_completed_count = 0
+        both_completed_count = 0
+        ak_target_count = 0  # Applications with AK as target
+        cn_target_count = 0  # Applications with Cloud Native as target
 
         for app in applications:
             # Status
@@ -96,6 +115,12 @@ class DashboardService:
             target_key = app.overall_transformation_target.value if hasattr(app.overall_transformation_target, 'value') else str(app.overall_transformation_target)
             target_counts[target_key] = target_counts.get(target_key, 0) + 1
 
+            # Track target types
+            if target_key in ["AK", "AK+云原生"]:
+                ak_target_count += 1
+            if target_key in ["云原生", "AK+云原生"]:
+                cn_target_count += 1
+
             # Delayed
             if app.is_delayed:
                 delayed_count += 1
@@ -103,13 +128,42 @@ class DashboardService:
             # Progress
             total_progress += app.progress_percentage
 
+            # ✅ Use accurate completion flags
+            if app.is_ak_completed:
+                ak_completed_count += 1
+
+            if app.is_cloud_native_completed:
+                cloud_native_completed_count += 1
+
+            if app.is_ak_completed and app.is_cloud_native_completed:
+                both_completed_count += 1
+
+        # Calculate completion rates
+        ak_completion_rate = (
+            round((ak_completed_count / ak_target_count) * 100, 2)
+            if ak_target_count > 0 else 0.0
+        )
+
+        cloud_native_completion_rate = (
+            round((cloud_native_completed_count / cn_target_count) * 100, 2)
+            if cn_target_count > 0 else 0.0
+        )
+
         return {
             "total": total,
             "by_status": status_counts,
             "by_target": target_counts,
             "average_progress": round(total_progress / total, 2),
             "delayed_count": delayed_count,
-            "on_track_count": total - delayed_count
+            "on_track_count": total - delayed_count,
+            # ✅ Accurate transformation completion metrics
+            "ak_completed_count": ak_completed_count,
+            "cloud_native_completed_count": cloud_native_completed_count,
+            "both_completed_count": both_completed_count,
+            "ak_target_count": ak_target_count,
+            "cn_target_count": cn_target_count,
+            "ak_completion_rate": ak_completion_rate,
+            "cloud_native_completion_rate": cloud_native_completion_rate
         }
 
     async def get_team_performance(
@@ -118,14 +172,18 @@ class DashboardService:
         include_subtasks: bool = False
     ) -> List[Dict[str, Any]]:
         """
-        Get performance metrics by team.
+        Get performance metrics by team with accurate transformation completion tracking.
 
         Args:
             db: Database session
             include_subtasks: Whether to include subtask statistics
 
         Returns:
-            List of team performance metrics
+            List of team performance metrics including:
+            - Application counts by status
+            - AK/Cloud Native completion statistics
+            - Progress metrics
+            - Delay tracking
         """
         # Get all applications
         query = select(Application)
@@ -147,6 +205,10 @@ class DashboardService:
                     "in_progress": 0,
                     "not_started": 0,
                     "delayed": 0,
+                    # ✅ Add accurate transformation completion tracking
+                    "ak_completed": 0,
+                    "cloud_native_completed": 0,
+                    "both_completed": 0,
                     "app_ids": []
                 }
 
@@ -165,6 +227,16 @@ class DashboardService:
 
             if app.is_delayed:
                 metrics["delayed"] += 1
+
+            # ✅ Track transformation completion
+            if app.is_ak_completed:
+                metrics["ak_completed"] += 1
+
+            if app.is_cloud_native_completed:
+                metrics["cloud_native_completed"] += 1
+
+            if app.is_ak_completed and app.is_cloud_native_completed:
+                metrics["both_completed"] += 1
 
         # Include subtask statistics if requested
         if include_subtasks:
@@ -197,7 +269,11 @@ class DashboardService:
                 "completed": metrics["completed"],
                 "in_progress": metrics["in_progress"],
                 "not_started": metrics["not_started"],
-                "delayed": metrics["delayed"]
+                "delayed": metrics["delayed"],
+                # ✅ Include accurate transformation completion metrics
+                "ak_completed": metrics["ak_completed"],
+                "cloud_native_completed": metrics["cloud_native_completed"],
+                "both_completed": metrics["both_completed"]
             }
 
             if include_subtasks:
