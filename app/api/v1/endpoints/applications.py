@@ -62,12 +62,18 @@ async def list_applications(
     year: Optional[int] = Query(None, description="Filter by supervision year"),
     target: Optional[str] = Query(None, description="Filter by transformation target"),
     is_delayed: Optional[bool] = Query(None, description="Filter by delay status"),
+    # New transformation status filters
+    ak_status: Optional[str] = Query(None, description="Filter by AK status: NOT_STARTED | IN_PROGRESS | COMPLETED | BLOCKED"),
+    cloud_native_status: Optional[str] = Query(None, description="Filter by Cloud Native status: NOT_STARTED | IN_PROGRESS | COMPLETED | BLOCKED"),
+    transformation_target: Optional[str] = Query(None, description="Filter by transformation target: AK | 云原生"),
+    acceptance_year: Optional[int] = Query(None, description="Filter by acceptance year"),
+    belonging_project: Optional[str] = Query(None, description="Filter by belonging project"),
     sort_by: str = Query("updated_at", description="Sort field"),
     order: str = Query("desc", regex="^(asc|desc)$", description="Sort order"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """List applications with filtering and pagination."""
+    """List applications with filtering and pagination, including transformation statistics."""
 
     # Create filter object
     filters = ApplicationFilter(
@@ -78,7 +84,12 @@ async def list_applications(
         ops_team=ops_team,
         year=year,
         target=target,
-        is_delayed=is_delayed
+        is_delayed=is_delayed,
+        ak_status=ak_status,
+        cloud_native_status=cloud_native_status,
+        transformation_target=transformation_target,
+        acceptance_year=acceptance_year,
+        belonging_project=belonging_project
     )
 
     # Create sort object
@@ -146,11 +157,12 @@ async def get_applications_by_team(
 @router.get("/{app_id}", response_model=ApplicationResponse)
 async def get_application(
     app_id: int,
+    include_stats: bool = Query(True, description="Include transformation statistics"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get application by ID."""
-    db_application = await application_service.get_application(db=db, l2_id=app_id)
+    """Get application by ID with transformation statistics."""
+    db_application = await application_service.get_application(db=db, l2_id=app_id, include_stats=include_stats)
     if not db_application:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -162,11 +174,12 @@ async def get_application(
 @router.get("/l2/{l2_id}", response_model=ApplicationResponse)
 async def get_application_by_l2_id(
     l2_id: str,
+    include_stats: bool = Query(True, description="Include transformation statistics"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get application by L2 ID."""
-    db_application = await application_service.get_application_by_l2_id(db=db, l2_id=l2_id)
+    """Get application by L2 ID with transformation statistics."""
+    db_application = await application_service.get_application_by_l2_id(db=db, l2_id=l2_id, include_stats=include_stats)
     if not db_application:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

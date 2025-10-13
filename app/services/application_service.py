@@ -11,11 +11,13 @@ from sqlalchemy.orm import selectinload
 from app.models.application import Application, ApplicationStatus, TransformationTarget
 from app.models.user import User
 from app.models.audit_log import AuditOperation
+from app.models.subtask import SubTask
 from app.schemas.application import (
     ApplicationCreate, ApplicationUpdate, ApplicationFilter,
     ApplicationSort, ApplicationStatistics
 )
 from app.core.exceptions import NotFoundError, ValidationError
+from app.services.transformation_stats import calculate_application_transformation_stats
 
 
 class ApplicationService:
@@ -90,22 +92,33 @@ class ApplicationService:
 
         return db_application
 
-    async def get_application(self, db: AsyncSession, l2_id: int) -> Optional[Application]:
-        """Get application by ID."""
+    async def get_application(self, db: AsyncSession, l2_id: int, include_stats: bool = False) -> Optional[Application | Dict[str, Any]]:
+        """Get application by ID, optionally with transformation statistics."""
         result = await db.execute(
             select(Application)
+            .options(selectinload(Application.subtasks))
             .where(Application.id == l2_id)
         )
-        return result.scalar_one_or_none()
+        app = result.scalar_one_or_none()
 
-    async def get_application_by_l2_id(self, db: AsyncSession, l2_id: str) -> Optional[Application]:
-        """Get application by L2_ID."""
+        if app and include_stats:
+            return await self._enrich_application_with_stats(app)
+
+        return app
+
+    async def get_application_by_l2_id(self, db: AsyncSession, l2_id: str, include_stats: bool = False) -> Optional[Application | Dict[str, Any]]:
+        """Get application by L2_ID, optionally with transformation statistics."""
         result = await db.execute(
             select(Application)
             .options(selectinload(Application.subtasks))
             .where(Application.l2_id == l2_id)
         )
-        return result.scalar_one_or_none()
+        app = result.scalar_one_or_none()
+
+        if app and include_stats:
+            return await self._enrich_application_with_stats(app)
+
+        return app
 
     async def update_application(
         self,
@@ -188,14 +201,14 @@ class ApplicationService:
         limit: int = 100,
         filters: Optional[ApplicationFilter] = None,
         sort: Optional[ApplicationSort] = None
-    ) -> tuple[List[Application], int]:
-        """List applications with filtering and pagination."""
+    ) -> tuple[List[Dict[str, Any]], int]:
+        """List applications with filtering and pagination, including transformation statistics."""
 
-        # Build base query
-        query = select(Application)
+        # Build base query - always load subtasks for statistics
+        query = select(Application).options(selectinload(Application.subtasks))
         count_query = select(func.count(Application.id))
 
-        # Apply filters
+        # Apply basic filters that can be done at SQL level
         if filters:
             conditions = []
 
@@ -214,11 +227,16 @@ class ApplicationService:
             if filters.ops_team:
                 conditions.append(Application.ops_team.ilike(f"%{filters.ops_team}%"))
 
-            if filters.year:
-                conditions.append(Application.ak_supervision_acceptance_year == filters.year)
+            if filters.year or filters.acceptance_year:
+                year_filter = filters.year or filters.acceptance_year
+                conditions.append(Application.ak_supervision_acceptance_year == year_filter)
 
-            if filters.target:
-                conditions.append(Application.overall_transformation_target == filters.target)
+            if filters.target or filters.transformation_target:
+                target_filter = filters.target or filters.transformation_target
+                conditions.append(Application.overall_transformation_target == target_filter)
+
+            if filters.belonging_project:
+                conditions.append(Application.belonging_projects.ilike(f"%{filters.belonging_project}%"))
 
             if filters.is_delayed is not None:
                 conditions.append(Application.is_delayed == filters.is_delayed)
@@ -233,10 +251,6 @@ class ApplicationService:
                 query = query.where(and_(*conditions))
                 count_query = count_query.where(and_(*conditions))
 
-        # Get total count
-        total_result = await db.execute(count_query)
-        total = total_result.scalar()
-
         # Apply sorting
         if sort:
             sort_column = getattr(Application, sort.sort_by, Application.updated_at)
@@ -247,14 +261,65 @@ class ApplicationService:
         else:
             query = query.order_by(desc(Application.updated_at))
 
-        # Apply pagination
-        query = query.offset(skip).limit(limit)
-
-        # Execute query
+        # Execute query to get all matching applications (before pagination for stats filtering)
         result = await db.execute(query)
-        applications = result.scalars().all()
+        all_applications = result.scalars().all()
 
-        return applications, total
+        # Enrich applications with transformation statistics
+        enriched_apps = []
+        for app in all_applications:
+            app_dict = await self._enrich_application_with_stats(app)
+            enriched_apps.append(app_dict)
+
+        # Apply transformation status filters (must be done after calculating stats)
+        filtered_apps = enriched_apps
+        if filters:
+            if filters.ak_status:
+                filtered_apps = [app for app in filtered_apps if app.get('ak_status') == filters.ak_status]
+
+            if filters.cloud_native_status:
+                filtered_apps = [app for app in filtered_apps if app.get('cloud_native_status') == filters.cloud_native_status]
+
+        # Get total count after stats filtering
+        total = len(filtered_apps)
+
+        # Apply pagination
+        paginated_apps = filtered_apps[skip:skip + limit]
+
+        return paginated_apps, total
+
+    async def _enrich_application_with_stats(self, app: Application) -> Dict[str, Any]:
+        """
+        Enrich an application with transformation statistics.
+
+        Args:
+            app: Application object with subtasks loaded
+
+        Returns:
+            Dictionary with all application fields plus transformation stats
+        """
+        # Convert application to dict
+        app_dict = {}
+        for column in app.__table__.columns:
+            value = getattr(app, column.name)
+            # Handle datetime/date serialization
+            if isinstance(value, (datetime, date)):
+                value = value.isoformat() if value else None
+            app_dict[column.name] = value
+
+        # Calculate transformation statistics
+        stats = calculate_application_transformation_stats(app.subtasks)
+
+        # Add calculated properties from model
+        app_dict['progress_percentage'] = app.progress_percentage
+        app_dict['subtask_count'] = app.subtask_count
+        app_dict['completed_subtask_count'] = app.completed_subtask_count
+        app_dict['completion_rate'] = app.completion_rate
+
+        # Merge transformation statistics
+        app_dict.update(stats)
+
+        return app_dict
 
     async def get_application_statistics(self, db: AsyncSession) -> ApplicationStatistics:
         """Get application statistics."""

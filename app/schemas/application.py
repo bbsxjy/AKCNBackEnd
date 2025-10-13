@@ -210,6 +210,27 @@ class ApplicationResponse(BaseModel):
     completed_subtask_count: Optional[int] = Field(0, description="Completed subtask count")
     completion_rate: Optional[float] = Field(0.0, description="Completion rate percentage")
 
+    # AK transformation statistics
+    ak_subtask_count: int = Field(default=0, description="Total AK subtask count")
+    ak_completed_count: int = Field(default=0, description="Completed AK subtask count")
+    ak_in_progress_count: int = Field(default=0, description="In-progress AK subtask count")
+    ak_blocked_count: int = Field(default=0, description="Blocked AK subtask count")
+    ak_not_started_count: int = Field(default=0, description="Not started AK subtask count")
+    ak_completion_percentage: float = Field(default=0.0, description="AK completion percentage (0-100)")
+    ak_status: str = Field(default="NOT_STARTED", description="AK transformation status")
+
+    # Cloud Native transformation statistics
+    cloud_native_subtask_count: int = Field(default=0, description="Total Cloud Native subtask count")
+    cloud_native_completed_count: int = Field(default=0, description="Completed Cloud Native subtask count")
+    cloud_native_in_progress_count: int = Field(default=0, description="In-progress Cloud Native subtask count")
+    cloud_native_blocked_count: int = Field(default=0, description="Blocked Cloud Native subtask count")
+    cloud_native_not_started_count: int = Field(default=0, description="Not started Cloud Native subtask count")
+    cloud_native_completion_percentage: float = Field(default=0.0, description="Cloud Native completion percentage (0-100)")
+    cloud_native_status: str = Field(default="NOT_STARTED", description="Cloud Native transformation status")
+
+    # Comprehensive status description
+    current_phase_description: str = Field(default="", description="Current phase description in Chinese")
+
     # Audit fields
     created_by: Optional[int] = Field(None, description="Created by user ID")
     updated_by: Optional[int] = Field(None, description="Updated by user ID")
@@ -241,6 +262,13 @@ class ApplicationFilter(BaseModel):
     is_delayed: Optional[bool] = Field(None, description="Delayed status filter")
     is_ak_completed: Optional[bool] = Field(None, description="AK completion filter")
     is_cloud_native_completed: Optional[bool] = Field(None, description="Cloud native completion filter")
+
+    # New filters for transformation status
+    ak_status: Optional[str] = Field(None, description="AK status filter: NOT_STARTED | IN_PROGRESS | COMPLETED | BLOCKED")
+    cloud_native_status: Optional[str] = Field(None, description="Cloud Native status filter: NOT_STARTED | IN_PROGRESS | COMPLETED | BLOCKED")
+    transformation_target: Optional[str] = Field(None, description="Transformation target filter: AK | 云原生")
+    acceptance_year: Optional[int] = Field(None, description="Acceptance year filter")
+    belonging_project: Optional[str] = Field(None, description="Belonging project filter")
 
 
 class ApplicationSort(BaseModel):
