@@ -39,7 +39,11 @@
       "Bash(del:*)",
       "Bash(mkdir:*)",
       "Bash(grep:*)",
-      "Bash(alembic revision:*)"
+      "Bash(alembic revision:*)",
+      "Bash(alembic history:*)",
+      "Bash(git push:*)",
+      "Bash(set PYTHONPATH=.)",
+      "Bash(git rm:*)"
     ],
     "deny": [],
     "ask": []

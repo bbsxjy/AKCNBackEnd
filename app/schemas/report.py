@@ -327,3 +327,55 @@ class ReportListResponse(BaseModel):
     page: int = Field(..., ge=1, description="Current page")
     page_size: int = Field(..., ge=1, description="Page size")
     reports: List[ReportMetadata] = Field(..., description="List of reports")
+
+
+# Bi-Weekly Report Schemas
+
+class StatusStats(BaseModel):
+    """Schema for status statistics."""
+    label: str = Field(..., description="Status label")
+    count: int = Field(..., ge=0, description="Count of applications with this status")
+    type: str = Field(..., description="Status type identifier")
+    detail: Optional[str] = Field(None, description="Additional detail (e.g., block reason)")
+
+
+class KeyIndicator(BaseModel):
+    """Schema for key indicator."""
+    name: str = Field(..., description="Indicator name")
+    percentage: float = Field(..., ge=0, le=100, description="Completion percentage")
+    completed: int = Field(..., ge=0, description="Number of completed items")
+    total: int = Field(..., ge=0, description="Total number of items")
+
+
+class DelayedApplication(BaseModel):
+    """Schema for delayed application."""
+    id: str = Field(..., description="Application ID")
+    appName: str = Field(..., description="Application name")
+    team: str = Field(..., description="Team name")
+    plannedDate: Optional[str] = Field(None, description="Planned completion date")
+    delayMonths: Optional[int] = Field(None, description="Number of months delayed")
+    delayReason: Optional[str] = Field(None, description="Reason for delay")
+    expectedDate: Optional[str] = Field(None, description="Expected completion date")
+
+
+class BiWeeklyReportData(BaseModel):
+    """Schema for bi-weekly report data from frontend."""
+    report_date: str = Field(..., description="Report date (e.g., '2025年10月15日')")
+    total_applications: int = Field(..., ge=0, description="Total number of applications")
+    status_stats: List[StatusStats] = Field(..., description="Status statistics")
+    key_indicators: List[KeyIndicator] = Field(..., description="Key indicators")
+    delayed_apps: List[DelayedApplication] = Field(default_factory=list, description="Delayed applications")
+    potential_risk_apps: List[DelayedApplication] = Field(default_factory=list, description="Potential risk applications")
+
+
+class BiWeeklyReportExportRequest(BaseModel):
+    """Schema for bi-weekly report export request."""
+    template_type: str = Field(..., description="Template type: 'sample1' or 'sample2'")
+    report_data: BiWeeklyReportData = Field(..., description="Report data to export")
+    export_format: str = Field("excel", description="Export format (currently only 'excel')")
+
+    @validator('template_type')
+    def validate_template_type(cls, v):
+        if v not in ['sample1', 'sample2']:
+            raise ValueError('template_type must be either "sample1" or "sample2"')
+        return v

@@ -2409,3 +2409,217 @@ class ExcelService:
                 subtasks_sheet.cell(row=2, column=col, value=value)
 
         self._apply_worksheet_styling(subtasks_sheet, 2 if include_sample else 1, len(headers))
+
+    # Bi-Weekly Report Export Methods
+
+    async def export_biweekly_report_sample1(
+        self,
+        db: AsyncSession,
+        report_data: Dict[str, Any]
+    ) -> bytes:
+        """
+        Generate bi-weekly report in sample1 format (双追踪表格式).
+        Two sheets: "AK" and "云原生", containing applications grouped by transformation target.
+        """
+
+        # Get all applications with their subtasks
+        stmt = select(Application).order_by(Application.l2_id)
+        result = await db.execute(stmt)
+        applications = result.scalars().all()
+
+        # Create workbook
+        workbook = Workbook()
+        workbook.remove(workbook.active)  # Remove default sheet
+
+        # Define column headers for sample1 format
+        headers = [
+            '序', 'L2应用编号', 'L2应用名称（全称）', '计划改造完成', '实施进度',
+            '详细进展及进展', '当前实施阶段', '计划需求完成', '实际需求完成',
+            '计划发版完成', '实际发版完成', '计划技术上线', '实际技术上线',
+            '计划业务上线', '实际业务上线', '备注'
+        ]
+
+        # Separate applications by transformation target
+        ak_apps = [app for app in applications if app.overall_transformation_target == 'AK']
+        cloud_native_apps = [app for app in applications if app.overall_transformation_target == '云原生']
+
+        # Create sheets for each transformation target
+        for sheet_name, apps_list in [('AK', ak_apps), ('云原生', cloud_native_apps)]:
+            worksheet = workbook.create_sheet(title=sheet_name)
+
+            # Write headers
+            self._write_headers(worksheet, headers, "standard")
+
+            # Write data rows
+            for idx, app in enumerate(apps_list, start=1):
+                # Get subtasks for this application to aggregate data
+                stmt_subtasks = select(SubTask).where(SubTask.l2_id == app.id)
+                result_subtasks = await db.execute(stmt_subtasks)
+                subtasks = result_subtasks.scalars().all()
+
+                # Aggregate subtask data for progress details
+                progress_details = self._aggregate_subtask_progress(subtasks)
+
+                row_data = [
+                    idx,  # 序号
+                    app.l2_id or '',  # L2应用编号
+                    app.app_name or '',  # L2应用名称（全称）
+                    app.ak_supervision_acceptance_year or '',  # 计划改造完成
+                    f"{app.progress_percentage}%" if app.progress_percentage is not None else '0%',  # 实施进度
+                    progress_details,  # 详细进展及进展
+                    app.current_status or '',  # 当前实施阶段
+                    app.planned_requirement_date.strftime('%Y-%m-%d') if app.planned_requirement_date else '',  # 计划需求完成
+                    app.actual_requirement_date.strftime('%Y-%m-%d') if app.actual_requirement_date else '',  # 实际需求完成
+                    app.planned_release_date.strftime('%Y-%m-%d') if app.planned_release_date else '',  # 计划发版完成
+                    app.actual_release_date.strftime('%Y-%m-%d') if app.actual_release_date else '',  # 实际发版完成
+                    app.planned_tech_online_date.strftime('%Y-%m-%d') if app.planned_tech_online_date else '',  # 计划技术上线
+                    app.actual_tech_online_date.strftime('%Y-%m-%d') if app.actual_tech_online_date else '',  # 实际技术上线
+                    app.planned_biz_online_date.strftime('%Y-%m-%d') if app.planned_biz_online_date else '',  # 计划业务上线
+                    app.actual_biz_online_date.strftime('%Y-%m-%d') if app.actual_biz_online_date else '',  # 实际业务上线
+                    app.notes or ''  # 备注
+                ]
+
+                for col_num, value in enumerate(row_data, start=1):
+                    worksheet.cell(row=idx+1, column=col_num, value=value)
+
+            # Apply styling
+            self._apply_worksheet_styling(worksheet, len(apps_list) + 1, len(headers), "standard")
+
+        # Save to bytes
+        output = io.BytesIO()
+        workbook.save(output)
+        output.seek(0)
+        return output.getvalue()
+
+    async def export_biweekly_report_sample2(
+        self,
+        db: AsyncSession,
+        report_data: Dict[str, Any]
+    ) -> bytes:
+        """
+        Generate bi-weekly report in sample2 format (详细追踪表格式).
+        Single sheet with detailed tracking including monthly progress.
+        """
+
+        # Get all applications with their subtasks
+        stmt = select(Application).order_by(Application.l2_id)
+        result = await db.execute(stmt)
+        applications = result.scalars().all()
+
+        # Create workbook
+        workbook = Workbook()
+        worksheet = workbook.active
+        worksheet.title = "Sheet1"
+
+        # Define column headers for sample2 format
+        # This includes more detailed fields and monthly tracking columns
+        headers = [
+            '归属单位', '年', 'AK标签', '入股票系', '应用ID', '应用名称', '是否为核心应用',
+            '所属L1', '负责单位', '负责单位联系人', '开发单位', '开发单位联系人',
+            '开发模式', '涉及项目', '是否云原生', '改造层',
+            '更新计划说明', '前期实施计划概况/进度备注',
+            # Monthly progress tracking (3 columns per month: status, stage, completion date)
+            '3月实施状态', '3月实施阶段', '3月完成日期',
+            '4月实施状态', '4月实施阶段', '4月完成日期',
+            '5月实施状态', '5月实施阶段', '5月完成日期',
+            '6月实施状态', '6月实施阶段', '6月完成日期',
+            '是否已完成采购', '完成计划', '计划改造完成'
+        ]
+
+        # Write headers
+        self._write_headers(worksheet, headers, "standard")
+
+        # Write data rows
+        for idx, app in enumerate(applications, start=1):
+            # Get subtasks for this application
+            stmt_subtasks = select(SubTask).where(SubTask.l2_id == app.id)
+            result_subtasks = await db.execute(stmt_subtasks)
+            subtasks = result_subtasks.scalars().all()
+
+            # Calculate monthly progress from subtasks
+            monthly_progress = self._calculate_monthly_progress(subtasks)
+
+            row_data = [
+                app.dev_team or '未填写',  # 归属单位
+                app.ak_supervision_acceptance_year or '',  # 年
+                app.overall_transformation_target or '',  # AK标签
+                '',  # 入股票系 (not in current schema)
+                app.l2_id or '',  # 应用ID
+                app.app_name or '',  # 应用名称
+                '',  # 是否为核心应用 (not in current schema, could be inferred from app_tier)
+                app.belonging_l1_name or '',  # 所属L1
+                app.dev_team or '',  # 负责单位
+                app.dev_owner or '',  # 负责单位联系人
+                app.dev_team or '',  # 开发单位
+                app.dev_owner or '',  # 开发单位联系人
+                app.dev_mode or '',  # 开发模式
+                app.belonging_projects or '',  # 涉及项目
+                '是' if app.overall_transformation_target == '云原生' else '否',  # 是否云原生
+                '',  # 改造层 (needs to be defined)
+                '',  # 更新计划说明
+                self._aggregate_subtask_progress(subtasks),  # 前期实施计划概况/进度备注
+                # Monthly progress (3 values per month)
+                *monthly_progress.get('3月', ['', '', '']),
+                *monthly_progress.get('4月', ['', '', '']),
+                *monthly_progress.get('5月', ['', '', '']),
+                *monthly_progress.get('6月', ['', '', '']),
+                '',  # 是否已完成采购
+                '',  # 完成计划
+                app.ak_supervision_acceptance_year or ''  # 计划改造完成
+            ]
+
+            for col_num, value in enumerate(row_data, start=1):
+                worksheet.cell(row=idx+1, column=col_num, value=value)
+
+        # Apply styling
+        self._apply_worksheet_styling(worksheet, len(applications) + 1, len(headers), "standard")
+
+        # Save to bytes
+        output = io.BytesIO()
+        workbook.save(output)
+        output.seek(0)
+        return output.getvalue()
+
+    def _aggregate_subtask_progress(self, subtasks: List[SubTask]) -> str:
+        """Aggregate subtask progress into a summary string."""
+        if not subtasks:
+            return ''
+
+        # Group subtasks by status
+        status_counts = {}
+        for subtask in subtasks:
+            status = subtask.task_status or '未开始'
+            status_counts[status] = status_counts.get(status, 0) + 1
+
+        # Build summary string
+        summary_parts = []
+        for status, count in status_counts.items():
+            summary_parts.append(f"{status}:{count}个")
+
+        return '; '.join(summary_parts)
+
+    def _calculate_monthly_progress(self, subtasks: List[SubTask]) -> Dict[str, List[str]]:
+        """Calculate monthly progress from subtasks."""
+        # This is a simplified implementation
+        # In a real scenario, you would need to track monthly completion data
+        # For now, return empty data for each month
+        monthly_data = {}
+        for month in ['3月', '4月', '5月', '6月']:
+            # Each month has 3 columns: status, stage, completion date
+            monthly_data[month] = ['', '', '']
+
+        # If there are subtasks, we could analyze completion dates
+        # to determine which month they were completed in
+        for subtask in subtasks:
+            if subtask.actual_biz_online_date:
+                month_num = subtask.actual_biz_online_date.month
+                if 3 <= month_num <= 6:
+                    month_key = f"{month_num}月"
+                    if month_key in monthly_data:
+                        monthly_data[month_key] = [
+                            subtask.task_status or '',
+                            subtask.task_status or '',
+                            subtask.actual_biz_online_date.strftime('%Y-%m-%d')
+                        ]
+
+        return monthly_data

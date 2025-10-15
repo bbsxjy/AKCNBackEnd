@@ -22,7 +22,8 @@ from app.schemas.report import (
     ReportExportRequest, ReportExportResponse,
     ReportListRequest, ReportListResponse,
     ReportHealthCheck, ReportTemplate,
-    ExportFormat
+    ExportFormat,
+    BiWeeklyReportExportRequest
 )
 
 router = APIRouter()
@@ -809,3 +810,59 @@ async def _cleanup_export_file(file_name: str, delay: int):
 
 # Import timedelta for expiration calculation
 from datetime import timedelta
+
+
+@router.post("/export/bi-weekly")
+async def export_bi_weekly_report(
+    request: BiWeeklyReportExportRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles([UserRole.ADMIN, UserRole.MANAGER, UserRole.EDITOR]))
+):
+    """
+    Export bi-weekly report in Excel format.
+
+    Supports two template types:
+    - sample1: 双追踪表格式 (Two sheets: AK and 云原生)
+    - sample2: 详细追踪表格式 (Single sheet with monthly tracking)
+    """
+
+    try:
+        from app.services.excel_service import ExcelService
+        excel_service = ExcelService()
+
+        # Generate report based on template type
+        if request.template_type == "sample1":
+            excel_bytes = await excel_service.export_biweekly_report_sample1(
+                db=db,
+                report_data=request.report_data.dict()
+            )
+            filename = f"bi_weekly_report_sample1_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        elif request.template_type == "sample2":
+            excel_bytes = await excel_service.export_biweekly_report_sample2(
+                db=db,
+                report_data=request.report_data.dict()
+            )
+            filename = f"bi_weekly_report_sample2_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid template_type: {request.template_type}. Must be 'sample1' or 'sample2'."
+            )
+
+        # Return Excel file as streaming response
+        return Response(
+            content=excel_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}",
+                "Access-Control-Expose-Headers": "Content-Disposition"
+            }
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to export bi-weekly report: {str(e)}"
+        )
