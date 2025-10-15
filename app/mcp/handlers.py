@@ -18,8 +18,10 @@ from app.services import (
     AuditService,
     DashboardService
 )
-from app.schemas.application import ApplicationCreate, ApplicationUpdate
-from app.schemas.subtask import SubTaskCreate, SubTaskUpdate, SubTaskBatchUpdate
+from app.services.cmdb_query_service import CMDBQueryService
+from app.services.cmdb_import_service import CMDBImportService
+from app.schemas.application import ApplicationCreate, ApplicationUpdate, ApplicationFilter
+from app.schemas.subtask import SubTaskCreate, SubTaskUpdate, SubTaskBulkUpdate
 from app.schemas.excel import ExcelImportRequest, ExcelExportRequest
 from app.models.user import User
 
@@ -55,7 +57,7 @@ async def get_mock_user() -> User:
 async def handle_database_query(tool_name: str, arguments: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Handle database query operations."""
     try:
-        async with get_db_context() as db:
+        async with get_db_context()() as db:
             if tool_name == "db_query":
                 # Execute read-only SQL query
                 query = arguments.get("query", "")
@@ -126,7 +128,7 @@ async def handle_database_query(tool_name: str, arguments: Optional[Dict[str, An
 async def handle_application_operation(tool_name: str, arguments: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Handle application management operations."""
     try:
-        async with get_db_context() as db:
+        async with get_db_context()() as db:
             user = await get_mock_user()
             
             if tool_name == "app_list":
@@ -135,16 +137,27 @@ async def handle_application_operation(tool_name: str, arguments: Optional[Dict[
                 offset = arguments.get("offset", 0)
                 status = arguments.get("status")
                 team = arguments.get("team")
-                
-                apps = await ApplicationService.list_applications(
+
+                # Create filters if provided
+                filters = None
+                if status or team:
+                    filters = ApplicationFilter(
+                        status=status,
+                        dev_team=team
+                    )
+
+                # Create service instance
+                app_service = ApplicationService()
+                apps, total = await app_service.list_applications(
                     db, skip=offset, limit=limit,
-                    status=status, team=team
+                    filters=filters
                 )
-                
+
                 return {
                     "success": True,
                     "count": len(apps),
-                    "data": [app.dict() for app in apps]
+                    "total": total,
+                    "data": apps
                 }
             
             elif tool_name == "app_get":
@@ -200,7 +213,7 @@ async def handle_application_operation(tool_name: str, arguments: Optional[Dict[
 async def handle_subtask_operation(tool_name: str, arguments: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Handle subtask management operations."""
     try:
-        async with get_db_context() as db:
+        async with get_db_context()() as db:
             user = await get_mock_user()
             
             if tool_name == "task_list":
@@ -238,7 +251,7 @@ async def handle_subtask_operation(tool_name: str, arguments: Optional[Dict[str,
                 task_ids = [UUID(id) for id in arguments["task_ids"]]
                 update_data = SubTaskUpdate(**arguments["update_data"])
                 
-                batch_update = SubTaskBatchUpdate(
+                batch_update = SubTaskBulkUpdate(
                     task_ids=task_ids,
                     update_data=update_data
                 )
@@ -261,7 +274,7 @@ async def handle_subtask_operation(tool_name: str, arguments: Optional[Dict[str,
 async def handle_excel_operation(tool_name: str, arguments: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Handle Excel import/export operations."""
     try:
-        async with get_db_context() as db:
+        async with get_db_context()() as db:
             user = await get_mock_user()
             
             if tool_name == "excel_import":
@@ -327,7 +340,7 @@ async def handle_excel_operation(tool_name: str, arguments: Optional[Dict[str, A
 async def handle_calculation_service(tool_name: str, arguments: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Handle calculation service operations."""
     try:
-        async with get_db_context() as db:
+        async with get_db_context()() as db:
             
             if tool_name == "calc_progress":
                 # Calculate progress
@@ -378,7 +391,7 @@ async def handle_calculation_service(tool_name: str, arguments: Optional[Dict[st
 async def handle_audit_operation(tool_name: str, arguments: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Handle audit operations."""
     try:
-        async with get_db_context() as db:
+        async with get_db_context()() as db:
             user = await get_mock_user()
             
             if tool_name == "audit_get_logs":
@@ -436,12 +449,12 @@ async def handle_audit_operation(tool_name: str, arguments: Optional[Dict[str, A
 async def handle_dashboard_stats(tool_name: str, arguments: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Handle dashboard and analytics operations."""
     try:
-        async with get_db_context() as db:
-            
+        async with get_db_context()() as db:
+
             if tool_name == "dashboard_stats":
                 stat_type = arguments["stat_type"]
                 date_range = arguments.get("date_range")
-                
+
                 if stat_type == "summary":
                     stats = await DashboardService.get_summary_stats(db)
                 elif stat_type == "progress_trend":
@@ -456,17 +469,17 @@ async def handle_dashboard_stats(tool_name: str, arguments: Optional[Dict[str, A
                     stats = await DashboardService.get_delayed_summary(db)
                 else:
                     return {"error": f"Unknown stat type: {stat_type}"}
-                
+
                 return {
                     "success": True,
                     "stat_type": stat_type,
                     "data": stats
                 }
-            
+
             elif tool_name == "dashboard_export":
                 format_type = arguments["format"]
                 include_charts = arguments.get("include_charts", False)
-                
+
                 # Get all dashboard data
                 data = {
                     "summary": await DashboardService.get_summary_stats(db),
@@ -474,7 +487,7 @@ async def handle_dashboard_stats(tool_name: str, arguments: Optional[Dict[str, A
                     "department": await DashboardService.get_department_distribution(db),
                     "delayed": await DashboardService.get_delayed_summary(db)
                 }
-                
+
                 if format_type == "json":
                     return {
                         "success": True,
@@ -490,9 +503,190 @@ async def handle_dashboard_stats(tool_name: str, arguments: Optional[Dict[str, A
                         "file_content": file_content.hex(),
                         "format": format_type
                     }
-                
+
             return {"error": f"Unknown dashboard tool: {tool_name}"}
-            
+
     except Exception as e:
         logger.error(f"Dashboard operation error: {e}")
+        return {"error": str(e)}
+
+
+async def handle_cmdb_operation(tool_name: str, arguments: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Handle CMDB system catalog operations."""
+    try:
+        async with get_db_context()() as db:
+
+            if tool_name == "cmdb_search_l2":
+                # Search L2 applications
+                keyword = arguments.get("keyword")
+                status = arguments.get("status")
+                management_level = arguments.get("management_level")
+                belongs_to_156l1 = arguments.get("belongs_to_156l1")
+                belongs_to_87l1 = arguments.get("belongs_to_87l1")
+                limit = arguments.get("limit", 100)
+
+                apps = await CMDBQueryService.search_l2_applications(
+                    db, keyword=keyword, status=status,
+                    management_level=management_level,
+                    belongs_to_156l1=belongs_to_156l1,
+                    belongs_to_87l1=belongs_to_87l1,
+                    limit=limit
+                )
+
+                return {
+                    "success": True,
+                    "count": len(apps),
+                    "data": [
+                        {
+                            "config_id": app.config_id,
+                            "short_name": app.short_name,
+                            "status": app.status,
+                            "management_level": app.management_level,
+                            "business_supervisor_unit": app.business_supervisor_unit,
+                            "contact_person": app.contact_person,
+                            "dev_unit": app.dev_unit,
+                            "dev_contact": app.dev_contact,
+                            "ops_unit": app.ops_unit,
+                            "ops_contact": app.ops_contact,
+                            "belongs_to_156l1": app.belongs_to_156l1,
+                            "belongs_to_87l1": app.belongs_to_87l1,
+                        }
+                        for app in apps
+                    ]
+                }
+
+            elif tool_name == "cmdb_get_l2_with_l1":
+                # Get L2 application with L1 system information (需求场景3)
+                keyword = arguments.get("keyword")
+
+                if not keyword:
+                    return {"error": "Keyword is required"}
+
+                result = await CMDBQueryService.get_l2_application_with_l1_info(db, keyword)
+                return result
+
+            elif tool_name == "cmdb_search_156l1":
+                # Search 156L1 systems
+                keyword = arguments.get("keyword")
+                domain = arguments.get("domain")
+                layer = arguments.get("layer")
+                limit = arguments.get("limit", 100)
+
+                systems = await CMDBQueryService.search_l1_156_systems(
+                    db, keyword=keyword, domain=domain, layer=layer, limit=limit
+                )
+
+                return {
+                    "success": True,
+                    "count": len(systems),
+                    "data": [
+                        {
+                            "config_id": sys.config_id,
+                            "short_name": sys.short_name,
+                            "management_level": sys.management_level,
+                            "belongs_to_domain": sys.belongs_to_domain,
+                            "belongs_to_layer": sys.belongs_to_layer,
+                            "system_function": sys.system_function,
+                            "dev_unit": sys.dev_unit,
+                            "status": sys.status,
+                            "xinchuang_acceptance_year": sys.xinchuang_acceptance_year
+                        }
+                        for sys in systems
+                    ]
+                }
+
+            elif tool_name == "cmdb_search_87l1":
+                # Search 87L1 systems
+                keyword = arguments.get("keyword")
+                domain = arguments.get("domain")
+                layer = arguments.get("layer")
+                is_critical = arguments.get("is_critical")
+                limit = arguments.get("limit", 100)
+
+                systems = await CMDBQueryService.search_l1_87_systems(
+                    db, keyword=keyword, domain=domain, layer=layer,
+                    is_critical=is_critical, limit=limit
+                )
+
+                return {
+                    "success": True,
+                    "count": len(systems),
+                    "data": [
+                        {
+                            "config_id": sys.config_id,
+                            "short_name": sys.short_name,
+                            "description": sys.description,
+                            "management_level": sys.management_level,
+                            "belongs_to_domain": sys.belongs_to_domain,
+                            "belongs_to_layer": sys.belongs_to_layer,
+                            "is_critical_system": sys.is_critical_system,
+                            "peak_tps": sys.peak_tps,
+                            "daily_business_volume": sys.daily_business_volume,
+                            "function_positioning": sys.function_positioning,
+                            "dev_unit": sys.dev_unit,
+                            "ops_unit": sys.ops_unit,
+                            "status": sys.status
+                        }
+                        for sys in systems
+                    ]
+                }
+
+            elif tool_name == "cmdb_get_stats":
+                # Get CMDB statistics
+                stats = await CMDBQueryService.get_statistics(db)
+                return {
+                    "success": True,
+                    "statistics": stats
+                }
+
+            elif tool_name == "cmdb_import":
+                # Import CMDB data from Excel
+                file_path = arguments.get("file_path")
+                replace_existing = arguments.get("replace_existing", False)
+
+                if not file_path:
+                    return {"error": "file_path is required"}
+
+                result = await CMDBImportService.import_from_excel(
+                    db, file_path, replace_existing
+                )
+
+                return {
+                    "success": True,
+                    "import_stats": result
+                }
+
+            elif tool_name == "cmdb_get_l2_by_l1":
+                # Get L2 applications by L1 system
+                l1_system_name = arguments.get("l1_system_name")
+                l1_type = arguments.get("l1_type", "156")
+
+                if not l1_system_name:
+                    return {"error": "l1_system_name is required"}
+
+                apps = await CMDBQueryService.get_l2_applications_by_l1_system(
+                    db, l1_system_name, l1_type
+                )
+
+                return {
+                    "success": True,
+                    "l1_system_name": l1_system_name,
+                    "l1_type": l1_type,
+                    "count": len(apps),
+                    "applications": [
+                        {
+                            "config_id": app.config_id,
+                            "short_name": app.short_name,
+                            "management_level": app.management_level,
+                            "status": app.status,
+                            "contact_person": app.contact_person
+                        }
+                        for app in apps
+                    ]
+                }
+
+            return {"error": f"Unknown CMDB tool: {tool_name}"}
+
+    except Exception as e:
+        logger.error(f"CMDB operation error: {e}")
         return {"error": str(e)}

@@ -2,9 +2,9 @@
 SubTask-related Pydantic schemas
 """
 
-from typing import Optional, List
+from typing import Optional, List, Any
 from datetime import datetime, date
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, model_validator
 from app.models.subtask import SubTaskStatus
 
 
@@ -110,7 +110,7 @@ class SubTaskUpdate(BaseModel):
 class SubTaskResponse(BaseModel):
     """Schema for subtask response."""
     id: int
-    l2_id: int
+    l2_id: str  # Changed to str to return application L2_ID
     sub_target: Optional[str] = None
     version_name: Optional[str] = None
     task_status: str
@@ -164,6 +164,28 @@ class SubTaskResponse(BaseModel):
     updated_by: int
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode='before')
+    @classmethod
+    def extract_application_l2_id(cls, data: Any) -> Any:
+        """Extract application L2_ID from relationship if available."""
+        # Handle both dict and ORM model instances
+        if hasattr(data, 'application') and data.application:
+            # ORM model instance with loaded application relationship
+            app_l2_id = data.application.l2_id
+            # Create a dict from the ORM model
+            result = {}
+            for key in cls.model_fields.keys():
+                if key == 'l2_id':
+                    result[key] = app_l2_id
+                elif hasattr(data, key):
+                    result[key] = getattr(data, key)
+            return result
+        elif isinstance(data, dict) and 'application' in data and data['application']:
+            # Dict with nested application data
+            data['l2_id'] = data['application']['l2_id']
+            return data
+        return data
 
     class Config:
         from_attributes = True

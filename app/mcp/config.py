@@ -2,7 +2,11 @@
 
 import os
 from typing import Optional
-from pydantic import BaseSettings, Field
+try:
+    from pydantic_settings import BaseSettings
+except ImportError:
+    from pydantic import BaseSettings
+from pydantic import Field
 
 
 class MCPSettings(BaseSettings):
@@ -47,6 +51,7 @@ class MCPSettings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = False
+        extra = "ignore"  # 忽略.env中不属于MCPSettings的字段
 
 
 mcp_settings = MCPSettings()

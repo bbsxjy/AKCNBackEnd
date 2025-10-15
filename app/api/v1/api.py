@@ -17,7 +17,8 @@ from app.api.v1.endpoints import (
     users,
     task_assignments,
     announcements,
-    mcp
+    mcp,
+    cmdb
 )
 
 api_router = APIRouter()
@@ -36,3 +37,4 @@ api_router.include_router(reports.router, prefix="/reports", tags=["reports"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 api_router.include_router(mcp.router, prefix="/mcp", tags=["mcp"])
+api_router.include_router(cmdb.router, prefix="/cmdb", tags=["cmdb"])

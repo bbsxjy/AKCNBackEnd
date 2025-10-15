@@ -19,7 +19,8 @@ from app.mcp.handlers import (
     handle_excel_operation,
     handle_calculation_service,
     handle_audit_operation,
-    handle_dashboard_stats
+    handle_dashboard_stats,
+    handle_cmdb_operation
 )
 
 logger = logging.getLogger(__name__)
@@ -63,6 +64,8 @@ class MCPServer:
                     result = await handle_audit_operation(name, arguments)
                 elif name.startswith("dashboard_"):
                     result = await handle_dashboard_stats(name, arguments)
+                elif name.startswith("cmdb_"):
+                    result = await handle_cmdb_operation(name, arguments)
                 else:
                     raise ValueError(f"Unknown tool: {name}")
                 

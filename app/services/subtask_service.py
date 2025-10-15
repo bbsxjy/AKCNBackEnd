@@ -370,8 +370,8 @@ class SubTaskService:
     ) -> Tuple[List[SubTask], int]:
         """List subtasks with filtering and pagination."""
 
-        # Build base query
-        query = select(SubTask)
+        # Build base query with application relationship loaded
+        query = select(SubTask).options(selectinload(SubTask.application))
         count_query = select(func.count(SubTask.id))
 
         # Apply filters

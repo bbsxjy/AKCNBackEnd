@@ -236,5 +236,92 @@ def get_all_tools() -> List[Tool]:
                 },
                 "required": ["format"]
             }
+        ),
+
+        # CMDB System Catalog Tools
+        Tool(
+            name="cmdb_search_l2",
+            description="Search L2 applications in CMDB system catalog",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "keyword": {"type": "string", "description": "Search in short_name, other_names, config_id"},
+                    "status": {"type": "string", "description": "Filter by status"},
+                    "management_level": {"type": "string", "description": "Filter by management level"},
+                    "belongs_to_156l1": {"type": "string", "description": "Filter by 156L1 system"},
+                    "belongs_to_87l1": {"type": "string", "description": "Filter by 87L1 system"},
+                    "limit": {"type": "integer", "default": 100, "description": "Number of results"}
+                }
+            }
+        ),
+        Tool(
+            name="cmdb_get_l2_with_l1",
+            description="Get L2 application details with related L1 system information (满足需求场景3)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "keyword": {"type": "string", "description": "Application name keyword"}
+                },
+                "required": ["keyword"]
+            }
+        ),
+        Tool(
+            name="cmdb_search_156l1",
+            description="Search 156L1 systems (current L1 classification)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "keyword": {"type": "string", "description": "Search in short_name, config_id"},
+                    "domain": {"type": "string", "description": "Filter by domain"},
+                    "layer": {"type": "string", "description": "Filter by layer"},
+                    "limit": {"type": "integer", "default": 100}
+                }
+            }
+        ),
+        Tool(
+            name="cmdb_search_87l1",
+            description="Search 87L1 systems (future L1 classification)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "keyword": {"type": "string", "description": "Search in short_name, config_id, description"},
+                    "domain": {"type": "string", "description": "Filter by domain"},
+                    "layer": {"type": "string", "description": "Filter by layer"},
+                    "is_critical": {"type": "string", "description": "Filter by critical system"},
+                    "limit": {"type": "integer", "default": 100}
+                }
+            }
+        ),
+        Tool(
+            name="cmdb_get_stats",
+            description="Get CMDB system catalog statistics",
+            inputSchema={
+                "type": "object",
+                "properties": {}
+            }
+        ),
+        Tool(
+            name="cmdb_import",
+            description="Import CMDB data from Excel file",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "file_path": {"type": "string", "description": "Path to Excel file"},
+                    "replace_existing": {"type": "boolean", "default": False, "description": "Replace existing data"}
+                },
+                "required": ["file_path"]
+            }
+        ),
+        Tool(
+            name="cmdb_get_l2_by_l1",
+            description="Get L2 applications that belong to a specific L1 system",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "l1_system_name": {"type": "string", "description": "L1 system name"},
+                    "l1_type": {"type": "string", "enum": ["156", "87"], "default": "156", "description": "L1 type (156 or 87)"}
+                },
+                "required": ["l1_system_name"]
+            }
         )
     ]
