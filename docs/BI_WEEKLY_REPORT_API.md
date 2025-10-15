@@ -155,64 +155,97 @@ Authorization: Bearer <your-jwt-token>
 ### 文件结构
 - **Sheet 1**: "AK" - 包含AK改造的应用数据
 - **Sheet 2**: "云原生" - 包含云原生改造的应用数据
+- **总列数**: 28列（部分列为空列，用于格式占位）
 
 ### 列字段
 
-| 列名 | 说明 | 数据来源 |
-|------|------|----------|
-| 序 | 行号，从1开始 | 自动生成 |
-| L2应用编号 | 应用的L2标识 | `application.l2_id` |
-| L2应用名称（全称） | 应用名称 | `application.app_name` |
-| 计划改造完成 | 计划验收年份 | `application.ak_supervision_acceptance_year` |
-| 实施进度 | 百分比 | `application.progress_percentage` |
-| 详细进展及进展 | 子任务状态汇总 | 从subtasks汇总 |
-| 当前实施阶段 | 当前状态 | `application.current_status` |
-| 计划需求完成 | 计划需求完成日期 | `application.planned_requirement_date` |
-| 实际需求完成 | 实际需求完成日期 | `application.actual_requirement_date` |
-| 计划发版完成 | 计划发版完成日期 | `application.planned_release_date` |
-| 实际发版完成 | 实际发版完成日期 | `application.actual_release_date` |
-| 计划技术上线 | 计划技术上线日期 | `application.planned_tech_online_date` |
-| 实际技术上线 | 实际技术上线日期 | `application.actual_tech_online_date` |
-| 计划业务上线 | 计划业务上线日期 | `application.planned_biz_online_date` |
-| 实际业务上线 | 实际业务上线日期 | `application.actual_biz_online_date` |
-| 备注 | 备注信息 | `application.notes` |
+| 列序号 | 列名 | 说明 | 数据来源 | 状态映射 |
+|--------|------|------|----------|----------|
+| A (1) | 序号 | 行号，从1开始 | 自动生成 | - |
+| B (2) | L2应用编号 | 应用的L2标识 | `application.l2_id` | - |
+| C (3) | L2应用中文名称(收集) | 应用名称 | `application.app_name` | - |
+| D (4) | 计划调整情况 | 计划验收年份 | `application.ak_supervision_acceptance_year` + '年' | - |
+| E (5) | (空列) | - | - | - |
+| F (6) | (空列) | - | - | - |
+| G (7) | 实施情况 | 里程碑节点状态 | `application.current_status` | **使用状态映射** (见下方) |
+| H (8) | 详细工作安排及进展 | 详细进展阶段 | `application.current_status` | **使用状态映射** (见下方) |
+| I-AA (9-27) | (空列) | 预留列 | - | - |
+| AB (28) | 备注\n（难点或问题） | 备注信息 | `application.notes` | - |
+
+### Sample1状态映射规则
+
+基于 `mappings.xlsx` 的映射关系：
+
+**G列（实施情况）映射:**
+- `未开始` → `AK改造：未启动` / `云原生：未启动`
+- `需求进行中` → `AK改造：研发需求提交阶段` / `云原生：研发需求提交阶段`
+- `研发进行中` → `AK改造：研发测试阶段` / `云原生：研发测试阶段`
+- `部署进行中` → `AK改造：技术上线阶段` / `云原生：技术上线阶段`
+- `业务上线中` → `AK改造：技术上线阶段` / `云原生：技术上线阶段`
+- `全部完成` → `AK改造：完成业务上线` / `云原生：完成业务上线`
+- `中止` → `计划下线：未启动` / `计划下线：未启动`
+
+**H列（详细工作安排及进展）映射:**
+- `未开始` → `AK改造：未启动` / `云原生：未启动`
+- `需求进行中` → `AK改造：已完成采购` / `云原生：已完成采购`
+- `研发进行中` → `AK改造：已提交研发需求` / `云原生：已提交研发需求`
+- `部署进行中` → `AK改造：已完成研发测试` / `云原生：已完成研发测试`
+- `业务上线中` → `AK改造：已技术上线` / `云原生：已技术上线`
+- `全部完成` → `AK改造：已业务上线` / `云原生：已业务上线`
+- `中止` → `计划下线：确认应用要下线` / `计划下线：确认应用要下线`
 
 ## Sample2格式说明（详细追踪表）
 
 ### 文件结构
 - **Sheet 1**: "Sheet1" - 包含所有应用的详细追踪数据
+- **总列数**: 75列（包含大量月度跟踪预留列）
 
 ### 列字段
 
-| 列名 | 说明 | 数据来源 |
-|------|------|----------|
-| 归属单位 | 所属部门/团队 | `application.dev_team` |
-| 年 | 年份 | `application.ak_supervision_acceptance_year` |
-| AK标签 | AK/云原生 | `application.overall_transformation_target` |
-| 应用ID | 应用ID | `application.l2_id` |
-| 应用名称 | 应用名称 | `application.app_name` |
-| 所属L1 | 所属L1 | `application.belonging_l1_name` |
-| 负责单位 | 负责团队 | `application.dev_team` |
-| 负责单位联系人 | 负责人 | `application.dev_owner` |
-| 开发单位 | 开发团队 | `application.dev_team` |
-| 开发单位联系人 | 开发负责人 | `application.dev_owner` |
-| 开发模式 | 开发模式 | `application.dev_mode` |
-| 涉及项目 | 所属项目 | `application.belonging_projects` |
-| 是否云原生 | 是/否 | 基于`overall_transformation_target`计算 |
-| 前期实施计划概况/进度备注 | 子任务状态汇总 | 从subtasks汇总 |
-| 3月实施状态 | 3月实施状态 | 从subtasks按月汇总 |
-| 3月实施阶段 | 3月实施阶段 | 从subtasks按月汇总 |
-| 3月完成日期 | 3月完成日期 | 从subtasks按月汇总 |
-| 4月实施状态 | 4月实施状态 | 从subtasks按月汇总 |
-| 4月实施阶段 | 4月实施阶段 | 从subtasks按月汇总 |
-| 4月完成日期 | 4月完成日期 | 从subtasks按月汇总 |
-| 5月实施状态 | 5月实施状态 | 从subtasks按月汇总 |
-| 5月实施阶段 | 5月实施阶段 | 从subtasks按月汇总 |
-| 5月完成日期 | 5月完成日期 | 从subtasks按月汇总 |
-| 6月实施状态 | 6月实施状态 | 从subtasks按月汇总 |
-| 6月实施阶段 | 6月实施阶段 | 从subtasks按月汇总 |
-| 6月完成日期 | 6月完成日期 | 从subtasks按月汇总 |
-| 计划改造完成 | 计划改造完成年份 | `application.ak_supervision_acceptance_year` |
+| 列序号 | 列名 | 说明 | 数据来源 | 状态映射 |
+|--------|------|------|----------|----------|
+| A (1) | 编号位 | 编号位置 | (空) | - |
+| B (2) | 序号 | 行号，从1开始 | 自动生成 | - |
+| C (3) | AK类别 | AK/云原生 | `application.overall_transformation_target` | - |
+| D (4) | 信创类别 | 信创分类 | (空) | - |
+| E (5) | 应用ID | 应用的L2标识 | `application.l2_id` | - |
+| F (6) | 应用名称 | 应用名称 | `application.app_name` | - |
+| G (7) | 是否为监管报送 | 是否监管 | (空) | - |
+| H (8) | 所属L1 | 所属L1 | `application.belonging_l1_name` | - |
+| I (9) | 主管单位 | 主管团队 | `application.dev_team` | - |
+| J (10) | 主管单位联系人 | 主管负责人 | `application.dev_owner` | - |
+| K (11) | 开发单位 | 开发团队 | `application.dev_team` | - |
+| L (12) | 开发单位联系人 | 开发负责人 | `application.dev_owner` | - |
+| M (13) | 开发模式 | 开发模式 | `application.dev_mode` | - |
+| N (14) | 涉及项目 | 所属项目 | `application.belonging_projects` | - |
+| O (15) | 是否云原生 | 是/否 | 基于`overall_transformation_target`计算 | - |
+| P (16) | 跟进人 | 跟进负责人 | (空) | - |
+| Q (17) | 最新计划情况 | 计划状态 | `application.current_status` | **使用状态映射 (BF)** |
+| R (18) | 前期实施计划（状态/里程碑） | 实施里程碑 | `application.current_status` | **使用状态映射 (BG)** |
+| S (19) | 月度进展跟踪 | 月度跟踪 | 同Q列 | **使用状态映射 (BF)** |
+| T-BW (20-75) | (月度详细跟踪列) | 预留月度跟踪数据 | (空) | - |
+
+### Sample2状态映射规则
+
+基于 `mappings.xlsx` 的映射关系：
+
+**Q列、S列（最新计划情况、月度进展跟踪）- BF映射:**
+- `未开始` → `AK改造`
+- `需求进行中` → `AK改造`
+- `研发进行中` → `AK改造`
+- `部署进行中` → `AK改造`
+- `业务上线中` → `AK改造`
+- `全部完成` → `AK改造`
+- `中止` → `计划下线`
+
+**R列（前期实施计划（状态/里程碑））- BG映射:**
+- `未开始` → `未启动`
+- `需求进行中` → `研发需求提交阶段`
+- `研发进行中` → `研发测试阶段`
+- `部署进行中` → `技术上线阶段`
+- `业务上线中` → `业务上线阶段`
+- `全部完成` → `已完成`
+- `中止` → `未启动`
 
 ## 前端调用示例
 
