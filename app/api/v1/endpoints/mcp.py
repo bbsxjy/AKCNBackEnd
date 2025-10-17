@@ -153,6 +153,44 @@ async def execute_mcp_tool(
                 error = result.get("message", "Excel operation failed")
                 result = None
 
+        # Excel Template Filling (AI-powered)
+        elif tool_name == "excel_fill_template":
+            # This tool requires file upload through the dedicated endpoint
+            result = {
+                "message": "Excel模板填充功能已启用",
+                "instructions": "请使用以下方式上传模板并填充数据：",
+                "method_1": {
+                    "description": "通过API上传Excel模板文件",
+                    "endpoint": "POST /api/v1/excel/fill-template",
+                    "parameters": {
+                        "file": "Excel模板文件（.xlsx）",
+                        "context": arguments.get("context", "可选：数据筛选条件"),
+                        "limit": arguments.get("limit", 1000)
+                    },
+                    "example_curl": """curl -X POST "http://localhost:8000/api/v1/excel/fill-template?context=项目进度报告&limit=1000" \\
+     -H "Authorization: Bearer YOUR_TOKEN" \\
+     -F "file=@template.xlsx" \\
+     --output filled_template.xlsx"""
+                },
+                "method_2": {
+                    "description": "前端界面上传",
+                    "steps": [
+                        "1. 准备Excel模板文件（包含表头）",
+                        "2. 点击上传按钮选择文件",
+                        "3. (可选) 输入筛选条件，如：只显示延期项目",
+                        "4. 点击提交，系统会自动填充数据",
+                        "5. 下载填充后的Excel文件"
+                    ]
+                },
+                "template_requirements": [
+                    "模板必须包含清晰的列标题",
+                    "AI会自动识别列名并映射到数据库字段",
+                    "支持的列名示例：L2 ID、应用名称、进度%、状态、团队、负责人等",
+                    "会保留模板的所有格式（颜色、边框、合并单元格等）"
+                ],
+                "note": "由于此功能需要文件上传，无法直接通过文本消息调用。请使用上述方法之一。"
+            }
+
         else:
             error = f"工具 '{tool_name}' 尚未实现"
 

@@ -149,6 +149,29 @@ class MCPService:
                     "required": False
                 }
             }
+        },
+        {
+            "name": "excel_fill_template",
+            "description": "AI智能填充Excel模板（用户上传模板，系统自动填充数据）",
+            "category": "excel_template",
+            "requiresEdit": False,
+            "parameters": {
+                "template_description": {
+                    "type": "string",
+                    "description": "模板描述（AI将根据此描述理解模板需求）",
+                    "required": False
+                },
+                "context": {
+                    "type": "string",
+                    "description": "数据筛选上下文（如：只显示延期项目、2024年数据等）",
+                    "required": False
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "最大填充行数（1-10000，默认1000）",
+                    "required": False
+                }
+            }
         }
     ]
 
@@ -638,11 +661,15 @@ class MCPService:
 2. app_get - 获取应用详情，必需参数l2_id为字符串类型
 3. dashboard_stats - 获取统计数据，参数stat_type可选值为summary或progress_trend或department或delayed
 4. db_query - 执行SQL查询，参数query为SELECT语句
-5. not_relevant - 拒绝非业务查询，返回友好提示
+5. excel_create_report - 创建专业Excel报表，参数report_type可选值为progress/delayed/department/summary
+6. excel_generate_from_query - 根据自然语言生成Excel报表，参数query为用户需求描述
+7. excel_fill_template - AI填充Excel模板，当用户上传Excel文件或提到填充模板时使用，参数template_description为模板说明和context为数据筛选条件
+8. not_relevant - 拒绝非业务查询，返回友好提示
 
 分析规则：
 第一步：判断查询是否与业务相关。
 - 如果是打招呼或闲聊或非业务问题，使用not_relevant工具
+- 如果提到上传Excel、填充模板、模板填充、按照模板等关键词，使用excel_fill_template工具
 - 如果是业务查询继续第二步
 
 第二步：选择合适的工具。
@@ -686,6 +713,9 @@ SQL模板参考：
 
 示例4 非业务查询：
 用户打招呼时，返回JSON其中tool_name为not_relevant且arguments中message为友好的提示
+
+示例5 Excel模板填充：
+用户提到填充模板、上传Excel、按照模板等时，返回JSON其中tool_name为excel_fill_template，arguments包含template_description和context字段，reasoning说明这是模板填充请求
 
 重要：生成的SQL必须是完整的、可执行的语句，不能包含省略号或未完成的部分！
 
