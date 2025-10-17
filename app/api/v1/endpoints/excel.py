@@ -520,6 +520,131 @@ async def get_mapping_templates(
     }
 
 
+@router.post("/fill-template")
+async def fill_excel_template(
+    file: UploadFile = File(..., description="Excel template file to fill with data"),
+    context: Optional[str] = Query(None, description="Optional context to help AI understand the template"),
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum number of rows to fill"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles([UserRole.ADMIN, UserRole.MANAGER, UserRole.EDITOR]))
+):
+    """
+    Fill an Excel template with data from database using AI.
+
+    This endpoint:
+    1. Accepts an Excel file as a template
+    2. Uses AI to understand what data the template needs
+    3. Queries the database for relevant data
+    4. Fills the template with actual data while preserving formatting
+    5. Returns the populated Excel file
+
+    **Example Usage**:
+    ```bash
+    curl -X POST "http://localhost:8000/api/v1/excel/fill-template?context=项目进度报告" \
+         -H "Authorization: Bearer YOUR_TOKEN" \
+         -F "file=@template.xlsx"
+    ```
+
+    **Input**:
+    - `file`: Excel template file (required)
+    - `context`: Optional text to help AI understand the template intent (e.g., "monthly progress report", "delayed projects analysis")
+    - `limit`: Maximum rows to fill (default 1000, max 10000)
+
+    **Output**:
+    - Excel file with data filled in
+    - Filename: `filled_template_TIMESTAMP.xlsx`
+    - Content-Type: `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+    - Headers include metadata about the filled template
+
+    **Template Requirements**:
+    - Must be a valid Excel file (.xlsx)
+    - Should have clear column headers
+    - Can include formatting, styles, merged cells (will be preserved)
+    - Title rows and merged cells are automatically detected
+
+    **Supported Data**:
+    - Application transformation data (l2_id, app_name, progress, team, etc.)
+    - Sub-task data (task status, targets, progress)
+    - User data (teams, owners)
+    - Custom SQL queries (if AI determines complex data is needed)
+    """
+    import logging
+    from datetime import datetime
+
+    logger = logging.getLogger(__name__)
+
+    # Validate file type
+    if not file.filename.endswith(('.xlsx', '.xls')):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only Excel files (.xlsx, .xls) are supported"
+        )
+
+    # Check file size (limit to 50MB)
+    file_content = await file.read()
+    if len(file_content) > 50 * 1024 * 1024:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File size exceeds 50MB limit"
+        )
+
+    start_time = time.time()
+
+    try:
+        # Import the template filler service
+        from app.services.excel_template_service import excel_template_service
+
+        logger.info(f"Filling template for user {current_user.username}: {file.filename}")
+
+        # Fill the template
+        filled_bytes, metadata = await excel_template_service.fill_template(
+            file_bytes=file_content,
+            db=db,
+            user_context=context,
+            limit=limit
+        )
+
+        processing_time = int((time.time() - start_time) * 1000)
+
+        # Generate filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"filled_template_{timestamp}.xlsx"
+
+        logger.info(
+            f"Template filled successfully: {metadata['rows_filled']} rows, "
+            f"{processing_time}ms, user={current_user.username}"
+        )
+
+        # Return file with metadata in headers
+        return Response(
+            content=filled_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "X-Rows-Filled": str(metadata['rows_filled']),
+                "X-Data-Source": metadata['data_source'],
+                "X-Processing-Time-Ms": str(processing_time),
+                "X-Template-Title": metadata.get('template_title', ''),
+                "X-AI-Reasoning": metadata.get('ai_reasoning', '')[:200]  # Limit header size
+            }
+        )
+
+    except ValueError as e:
+        # Template parsing or validation errors
+        logger.error(f"Template validation error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid template: {str(e)}"
+        )
+
+    except Exception as e:
+        logger.error(f"Error filling template: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fill template: {str(e)}"
+        )
+
+
 @router.get("/health", response_model=ExcelHealthCheck)
 async def excel_service_health_check(
     current_user: User = Depends(require_roles([UserRole.ADMIN, UserRole.MANAGER]))
