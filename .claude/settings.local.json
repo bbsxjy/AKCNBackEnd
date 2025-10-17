@@ -43,7 +43,16 @@
       "Bash(alembic history:*)",
       "Bash(git push:*)",
       "Bash(set PYTHONPATH=.)",
-      "Bash(git rm:*)"
+      "Bash(git rm:*)",
+      "Bash(findstr:*)",
+      "WebFetch(domain:github.com)",
+      "WebSearch",
+      "WebFetch(domain:pypi.org)",
+      "Read(//c/Users/Administrator/AppData/Local/Programs/Python/Python313/Lib/site-packages/excel_mcp/**)",
+      "Bash(move excel_mcp_service.py excel_mcp_service_old.py)",
+      "Bash(ren:*)",
+      "Read(//c/Users/Administrator/Desktop/TrackerBuilder/**)",
+      "Bash(if exist nul del /f nul)"
     ],
     "deny": [],
     "ask": []

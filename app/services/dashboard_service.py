@@ -463,6 +463,172 @@ class DashboardService:
             ]
         }
 
+    # ========================================
+    # MCP Handler Compatibility Methods
+    # ========================================
+
+    async def get_summary_stats(
+        self,
+        db: AsyncSession
+    ) -> Dict[str, Any]:
+        """
+        Get summary statistics for dashboard.
+
+        This is a compatibility method for MCP handlers.
+
+        Args:
+            db: Database session
+
+        Returns:
+            Summary statistics
+        """
+        metrics = await self.get_application_metrics(db)
+        team_performance = await self.get_team_performance(db)
+
+        return {
+            "applications": metrics,
+            "teams": team_performance,
+            "summary": {
+                "total_applications": metrics["total"],
+                "average_progress": metrics["average_progress"],
+                "delayed_count": metrics["delayed_count"],
+                "on_track_count": metrics["on_track_count"],
+                "ak_completion_rate": metrics["ak_completion_rate"],
+                "cloud_native_completion_rate": metrics["cloud_native_completion_rate"]
+            }
+        }
+
+    async def get_progress_trend(
+        self,
+        db: AsyncSession,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None
+    ) -> Dict[str, Any]:
+        """
+        Get progress trend over time.
+
+        This is a compatibility method for MCP handlers.
+
+        Args:
+            db: Database session
+            start_date: Start date for trend
+            end_date: End date for trend
+
+        Returns:
+            Progress trend data
+        """
+        # Calculate days between dates or default to 30 days
+        if start_date and end_date:
+            days = (end_date - start_date).days
+        else:
+            days = 30
+
+        timeline = await self.get_progress_timeline(db, days=days)
+
+        return {
+            "timeline": timeline,
+            "period_days": days,
+            "start_date": start_date.isoformat() if start_date else None,
+            "end_date": end_date.isoformat() if end_date else None
+        }
+
+    async def get_department_distribution(
+        self,
+        db: AsyncSession
+    ) -> Dict[str, Any]:
+        """
+        Get department/team distribution statistics.
+
+        This is a compatibility method for MCP handlers.
+
+        Args:
+            db: Database session
+
+        Returns:
+            Department distribution data
+        """
+        team_performance = await self.get_team_performance(db, include_subtasks=True)
+
+        return {
+            "teams": team_performance,
+            "total_teams": len(team_performance),
+            "distribution": {
+                "by_count": sorted(team_performance, key=lambda x: x["application_count"], reverse=True)[:10],
+                "by_progress": sorted(team_performance, key=lambda x: x["average_progress"], reverse=True)[:10],
+                "by_delayed": sorted(team_performance, key=lambda x: x["delayed"], reverse=True)[:10]
+            }
+        }
+
+    async def get_delayed_summary(
+        self,
+        db: AsyncSession
+    ) -> Dict[str, Any]:
+        """
+        Get summary of delayed applications.
+
+        This is a compatibility method for MCP handlers.
+
+        Args:
+            db: Database session
+
+        Returns:
+            Delayed applications summary
+        """
+        # Get all delayed applications
+        query = select(Application).where(Application.is_delayed == True)
+        result = await db.execute(query)
+        delayed_apps = result.scalars().all()
+
+        if not delayed_apps:
+            return {
+                "total_delayed": 0,
+                "average_delay_days": 0,
+                "max_delay_days": 0,
+                "applications": []
+            }
+
+        # Calculate statistics
+        total_delay = sum(app.delay_days or 0 for app in delayed_apps)
+        max_delay = max(app.delay_days or 0 for app in delayed_apps)
+        avg_delay = total_delay / len(delayed_apps) if delayed_apps else 0
+
+        # Group by team
+        by_team = {}
+        for app in delayed_apps:
+            team = app.dev_team or "未分配"
+            if team not in by_team:
+                by_team[team] = {
+                    "team_name": team,
+                    "count": 0,
+                    "total_delay_days": 0,
+                    "applications": []
+                }
+            by_team[team]["count"] += 1
+            by_team[team]["total_delay_days"] += app.delay_days or 0
+            by_team[team]["applications"].append({
+                "l2_id": app.l2_id,
+                "app_name": app.app_name,
+                "delay_days": app.delay_days,
+                "current_status": app.current_status.value if hasattr(app.current_status, 'value') else str(app.current_status)
+            })
+
+        return {
+            "total_delayed": len(delayed_apps),
+            "average_delay_days": round(avg_delay, 2),
+            "max_delay_days": max_delay,
+            "by_team": list(by_team.values()),
+            "applications": [
+                {
+                    "l2_id": app.l2_id,
+                    "app_name": app.app_name,
+                    "delay_days": app.delay_days,
+                    "current_status": app.current_status.value if hasattr(app.current_status, 'value') else str(app.current_status),
+                    "dev_team": app.dev_team
+                }
+                for app in sorted(delayed_apps, key=lambda x: x.delay_days or 0, reverse=True)[:20]
+            ]
+        }
+
 
 # Create singleton instance
 dashboard_service = DashboardService()

@@ -5,6 +5,7 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
@@ -55,6 +56,7 @@ async def list_mcp_tools(
         )
 
 
+@router.post("/execute/", response_model=MCPExecuteResponse)
 @router.post("/execute", response_model=MCPExecuteResponse)
 async def execute_mcp_tool(
     request: MCPExecuteRequest,
@@ -141,6 +143,16 @@ async def execute_mcp_tool(
                 error = result["error"]
                 result = result.get("data")
 
+        # Excel Advanced Operations (MCP Excel Server integration)
+        elif tool_name in ["excel_create_report", "excel_generate_from_query"]:
+            result = await handlers.handle_excel_advanced_operation(tool_name, arguments)
+            if "error" in result:
+                error = result["error"]
+                result = None
+            elif not result.get("success"):
+                error = result.get("message", "Excel operation failed")
+                result = None
+
         else:
             error = f"工具 '{tool_name}' 尚未实现"
 
@@ -164,6 +176,7 @@ async def execute_mcp_tool(
         )
 
 
+@router.post("/query/applications/", response_model=MCPQueryResponse)
 @router.post("/query/applications", response_model=MCPQueryResponse)
 async def natural_language_query(
     request: MCPQueryRequest,
@@ -171,19 +184,47 @@ async def natural_language_query(
     current_user: User = Depends(get_current_user),
     enable_ai: bool = True  # 是否启用AI增强
 ) -> MCPQueryResponse:
-    """Process natural language query using MCP tools with optional AI enhancement.
+    """Process natural language query using AI to generate SQL or select tools.
 
-    This endpoint can interpret natural language and execute appropriate tools.
-    If AI is enabled, it will also generate natural language reports and suggestions.
+    This endpoint uses LLM to understand user intent and:
+    1. Parse natural language query
+    2. Generate SQL or select appropriate MCP tool
+    3. Execute the query/tool
+    4. Generate natural language report (if AI enabled)
+    5. Suggest next actions (if AI enabled)
 
     **权限**: All authenticated users
-    **AI增强**: 如果配置了AI服务（MCP_ENABLE_AI_TOOLS=True），将自动生成报告和建议
+    **AI增强**: 如果配置了AI服务（MCP_ENABLE_AI_TOOLS=True），将使用LLM解析查询并生成报告
+
+    **示例**:
+    - "查看应用ID为123的详情" -> app_get工具
+    - "列出所有延期的项目" -> SQL查询
+    - "显示本月完成的应用数量" -> dashboard_stats工具
     """
     try:
-        # Parse natural language to tool and arguments
-        parsed = mcp_service.parse_natural_language_query(request.query)
-        tool_name = parsed["tool_name"]
-        arguments = parsed["arguments"]
+        # Use AI to parse natural language query
+        parsed = await mcp_service.parse_natural_language_with_ai(request.query)
+        tool_name = parsed.get("tool_name")
+        arguments = parsed.get("arguments", {})
+        reasoning = parsed.get("reasoning", "")
+
+        logger.info(f"Query '{request.query}' parsed to tool '{tool_name}': {reasoning}")
+
+        # Handle non-relevant queries
+        if tool_name == "not_relevant":
+            friendly_message = arguments.get("message", "抱歉，我只能处理与AK/Cloud Native转型项目相关的查询。")
+            return MCPQueryResponse(
+                success=True,
+                result={"message": friendly_message},
+                query_interpretation=f"非业务查询: {reasoning}",
+                ai_report=friendly_message
+            )
+
+        # If tool is db_query and SQL was generated, use the query from arguments
+        # (prefer arguments.query over sql_query since sql_query may be truncated)
+        if tool_name == "db_query":
+            if not arguments.get("query") and parsed.get("sql_query"):
+                arguments["query"] = parsed["sql_query"]
 
         # Execute the tool
         exec_request = MCPExecuteRequest(
@@ -195,15 +236,39 @@ async def natural_language_query(
         response = MCPQueryResponse(
             success=exec_result.success,
             result=exec_result.result or {},
-            query_interpretation=f"执行工具: {tool_name}, 参数: {arguments}"
+            query_interpretation=f"AI解析: {reasoning}\n执行工具: {tool_name}\n参数: {arguments}"
         )
 
-        # AI Enhancement - only if enabled and result is successful
+        # AI Enhancement - generate data-driven intelligent report
         if enable_ai and ai_assistant.enabled and exec_result.success and exec_result.result:
             try:
-                # Generate natural language report
-                ai_report = await ai_assistant.generate_report(exec_result.result)
-                response.ai_report = ai_report
+                # Use the new data-driven report generation service
+                from app.services.ai_report_service import generate_intelligent_report
+
+                # For db_query tool, generate intelligent report based on SQL analysis
+                if tool_name == "db_query" and arguments.get("query"):
+                    sql_query = arguments.get("query")
+                    intelligent_report = await generate_intelligent_report(
+                        query=sql_query,
+                        results=exec_result.result,
+                        context={
+                            "user_query": request.query,
+                            "tool_name": tool_name
+                        }
+                    )
+
+                    # Add the intelligent report to response
+                    response.ai_report = intelligent_report.get("ai_narrative", "")
+
+                    # Include data insights in the response
+                    if "insights" in intelligent_report:
+                        response.query_interpretation += f"\n\n关键洞察:\n" + "\n".join(
+                            f"- {insight}" for insight in intelligent_report["insights"]
+                        )
+                else:
+                    # Fallback to simple report generation for other tools
+                    ai_report = await ai_assistant.generate_report(exec_result.result)
+                    response.ai_report = ai_report
 
                 # Get AI suggestions for next actions
                 suggestions = await ai_assistant.suggest_next_actions({
@@ -222,7 +287,7 @@ async def natural_language_query(
         return response
 
     except Exception as e:
-        logger.error(f"Error processing natural language query: {e}")
+        logger.error(f"Error processing natural language query: {e}", exc_info=True)
         return MCPQueryResponse(
             success=False,
             result={},
@@ -257,21 +322,69 @@ async def get_database_schema(
         )
 
 
+@router.post("/query/", response_model=MCPSQLQueryResponse)
 @router.post("/query", response_model=MCPSQLQueryResponse)
 async def execute_sql_query(
     request: MCPSQLQueryRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> MCPSQLQueryResponse:
-    """Execute a read-only SQL query.
+    """Execute a SQL query or natural language query with AI parsing.
+
+    This endpoint intelligently detects:
+    - If input is valid SQL -> execute directly
+    - If input is natural language -> use AI to generate SQL
 
     **权限**: All authenticated users
     **安全**: 只允许 SELECT 语句
+    **AI增强**: 如果输入不是SQL，将使用AI转换为SQL
     """
     try:
+        query = request.query.strip()
+
+        # Check if input looks like SQL
+        is_sql = mcp_service.is_safe_sql_query(query)
+
+        if not is_sql:
+            # Input is not valid SQL, treat as natural language
+            logger.info(f"Query is not SQL, treating as natural language: {query}")
+
+            # Use AI to parse natural language and generate SQL or execute tool
+            parsed = await mcp_service.parse_natural_language_with_ai(query)
+            tool_name = parsed.get("tool_name")
+            arguments = parsed.get("arguments", {})
+
+            if tool_name == "db_query":
+                # AI generated SQL query - use arguments.query if available
+                query = arguments.get("query") or parsed.get("sql_query", "")
+                logger.info(f"AI generated SQL: {query}")
+            else:
+                # AI suggested a different tool - execute it directly
+                logger.info(f"AI suggested tool: {tool_name}, executing directly")
+
+                exec_request = MCPExecuteRequest(
+                    tool_name=tool_name,
+                    arguments=arguments
+                )
+                exec_result = await execute_mcp_tool(exec_request, db, current_user)
+
+                if exec_result.success:
+                    return MCPSQLQueryResponse(
+                        success=True,
+                        result={"data": exec_result.result, "tool_used": tool_name},
+                        error=None
+                    )
+                else:
+                    return MCPSQLQueryResponse(
+                        success=False,
+                        result=None,
+                        error=exec_result.error
+                    )
+
+        # Execute SQL query
         result = await mcp_service.execute_sql_query(
             db=db,
-            query=request.query,
+            query=query,
             params=request.params
         )
 
@@ -313,6 +426,7 @@ async def mcp_health_check() -> Dict[str, str]:
 # AI Enhancement Endpoints
 # ========================================
 
+@router.post("/ai/report/", response_model=AIReportResponse)
 @router.post("/ai/report", response_model=AIReportResponse)
 async def generate_ai_report(
     request: AIReportRequest,
@@ -368,6 +482,7 @@ async def generate_ai_report(
         )
 
 
+@router.post("/ai/suggest/", response_model=AISuggestionResponse)
 @router.post("/ai/suggest", response_model=AISuggestionResponse)
 async def get_ai_suggestions(
     request: AISuggestionRequest,
@@ -426,6 +541,7 @@ async def get_ai_suggestions(
         )
 
 
+@router.post("/ai/analyze/", response_model=AIAnalysisResponse)
 @router.post("/ai/analyze", response_model=AIAnalysisResponse)
 async def analyze_with_ai(
     request: AIAnalysisRequest,
@@ -478,4 +594,281 @@ async def analyze_with_ai(
         return AIAnalysisResponse(
             success=False,
             error=f"分析失败: {str(e)}"
+        )
+
+
+# ========================================
+# Streaming Endpoints (SSE)
+# ========================================
+
+@router.post("/query/applications/stream")
+@router.get("/query/applications/stream")
+async def natural_language_query_stream(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    request: Optional[MCPQueryRequest] = None,
+    query: Optional[str] = None
+):
+    """Process natural language query with streaming response.
+
+    This endpoint returns AI responses as they are generated (token by token)
+    using Server-Sent Events (SSE).
+
+    **权限**: All authenticated users
+    **响应格式**: text/event-stream (SSE)
+
+    **示例请求 (POST)**:
+    ```bash
+    curl -N -H "Authorization: Bearer token" \\
+         -H "Content-Type: application/json" \\
+         -d '{"query":"查询应用详情"}' \\
+         http://localhost:8000/api/v1/mcp/query/applications/stream
+    ```
+
+    **示例请求 (GET)**:
+    ```bash
+    curl -N -H "Authorization: Bearer token" \\
+         "http://localhost:8000/api/v1/mcp/query/applications/stream?query=查询应用详情"
+    ```
+
+    **SSE事件类型**:
+    - `status`: 状态更新 (parsing, executing, generating)
+    - `data`: 数据结果
+    - `ai_chunk`: AI响应片段 (流式输出)
+    - `done`: 完成信号
+    - `error`: 错误信息
+    """
+    # Handle both GET and POST requests
+    query_text = query if query else (request.query if request else None)
+
+    if not query_text:
+        # Return error for missing query
+        async def error_generator():
+            yield f"event: error\ndata: {json.dumps({'error': '缺少查询参数'}, ensure_ascii=False)}\n\n"
+            yield f"event: done\ndata: {json.dumps({'success': False}, ensure_ascii=False)}\n\n"
+
+        return StreamingResponse(
+            error_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive"
+            }
+        )
+
+    async def event_generator():
+        """Generate SSE events."""
+        try:
+            # Phase 1: Parse query
+            yield f"event: status\ndata: {json.dumps({'phase': 'parsing', 'message': '正在解析查询...'}, ensure_ascii=False)}\n\n"
+
+            parsed = await mcp_service.parse_natural_language_with_ai(query_text)
+            tool_name = parsed.get("tool_name")
+            arguments = parsed.get("arguments", {})
+            reasoning = parsed.get("reasoning", "")
+
+            yield f"event: status\ndata: {json.dumps({'phase': 'parsed', 'tool': tool_name, 'reasoning': reasoning}, ensure_ascii=False)}\n\n"
+
+            # Handle non-relevant queries
+            if tool_name == "not_relevant":
+                friendly_message = arguments.get("message", "抱歉，我只能处理与AK/Cloud Native转型项目相关的查询。")
+                yield f"event: ai_chunk\ndata: {json.dumps({'content': friendly_message}, ensure_ascii=False)}\n\n"
+                yield f"event: done\ndata: {json.dumps({'success': True, 'message': '非业务查询'}, ensure_ascii=False)}\n\n"
+                return
+
+            # Phase 2: Execute tool
+            yield f"event: status\ndata: {json.dumps({'phase': 'executing', 'message': f'正在执行 {tool_name}...'}, ensure_ascii=False)}\n\n"
+
+            # Use arguments.query if available, otherwise fall back to sql_query
+            if tool_name == "db_query":
+                if not arguments.get("query") and parsed.get("sql_query"):
+                    arguments["query"] = parsed["sql_query"]
+
+            exec_request = MCPExecuteRequest(
+                tool_name=tool_name,
+                arguments=arguments
+            )
+            exec_result = await execute_mcp_tool(exec_request, db, current_user)
+
+            # Send execution result
+            if exec_result.success:
+                yield f"event: data\ndata: {json.dumps({'result': exec_result.result}, default=str, ensure_ascii=False)}\n\n"
+            else:
+                yield f"event: error\ndata: {json.dumps({'error': exec_result.error}, ensure_ascii=False)}\n\n"
+                yield f"event: done\ndata: {json.dumps({'success': False}, ensure_ascii=False)}\n\n"
+                return
+
+            # Phase 3: Generate AI report (streaming)
+            if ai_assistant.enabled and exec_result.result:
+                yield f"event: status\ndata: {json.dumps({'phase': 'generating', 'message': '正在生成AI报告...'}, ensure_ascii=False)}\n\n"
+
+                # Generate streaming report (use sanitizer to avoid Jinja2 issues)
+                from app.mcp.ai_tools import sanitize_data_for_jinja2
+                safe_data = sanitize_data_for_jinja2(exec_result.result)
+
+                prompt = f"""
+                Generate a professional summary report from this data:
+
+                {safe_data}
+
+                The report should be:
+                1. Clear and concise
+                2. Highlight key metrics
+                3. Identify trends or issues
+                4. Provide actionable insights
+                """
+
+                try:
+                    async for chunk in ai_assistant._call_llm_stream(prompt):
+                        # Send each chunk as it's generated
+                        yield f"event: ai_chunk\ndata: {json.dumps({'content': chunk}, ensure_ascii=False)}\n\n"
+                except Exception as ai_error:
+                    logger.warning(f"AI streaming failed: {ai_error}")
+                    yield f"event: error\ndata: {json.dumps({'error': 'AI生成失败', 'details': str(ai_error)}, ensure_ascii=False)}\n\n"
+
+            # Phase 4: Done
+            yield f"event: done\ndata: {json.dumps({'success': True, 'message': '查询完成'}, ensure_ascii=False)}\n\n"
+
+        except Exception as e:
+            logger.error(f"Streaming error: {e}", exc_info=True)
+            yield f"event: error\ndata: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
+            yield f"event: done\ndata: {json.dumps({'success': False}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+            "Connection": "keep-alive"
+        }
+    )
+
+
+@router.post("/ai/report/stream")
+async def generate_ai_report_stream(
+    request: AIReportRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Generate AI report with streaming response.
+
+    **权限**: All authenticated users
+    **要求**: MCP_ENABLE_AI_TOOLS=True
+    **响应格式**: text/event-stream (SSE)
+    """
+    if not ai_assistant.enabled:
+        async def error_generator():
+            yield f"event: error\ndata: {json.dumps({'error': 'AI功能未启用'}, ensure_ascii=False)}\n\n"
+            yield f"event: done\ndata: {json.dumps({'success': False}, ensure_ascii=False)}\n\n"
+
+        return StreamingResponse(error_generator(), media_type="text/event-stream")
+
+    async def event_generator():
+        try:
+            # Sanitize data to avoid Jinja2 template issues
+            from app.mcp.ai_tools import sanitize_data_for_jinja2
+            safe_data = sanitize_data_for_jinja2(request.data)
+
+            prompt = f"""
+            Generate a professional summary report from this data:
+
+            {safe_data}
+
+            The report should be:
+            1. Clear and concise
+            2. Highlight key metrics
+            3. Identify trends or issues
+            4. Provide actionable insights
+            """
+
+            # Stream AI response
+            async for chunk in ai_assistant._call_llm_stream(prompt):
+                yield f"event: chunk\ndata: {json.dumps({'content': chunk}, ensure_ascii=False)}\n\n"
+
+            # Done
+            yield f"event: done\ndata: {json.dumps({'success': True}, ensure_ascii=False)}\n\n"
+
+        except Exception as e:
+            logger.error(f"AI report streaming failed: {e}")
+            yield f"event: error\ndata: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
+            yield f"event: done\ndata: {json.dumps({'success': False}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive"
+        }
+    )
+
+
+# ========================================
+# Excel Download Endpoint
+# ========================================
+
+@router.get("/excel/download/{file_name}")
+async def download_excel_report(
+    file_name: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    下载生成的 Excel 报表文件
+
+    **权限**: All authenticated users
+    **文件有效期**: 临时文件会在24小时后自动清理
+    """
+    import os
+    import tempfile
+    from fastapi.responses import FileResponse
+
+    try:
+        # 安全检查：防止路径遍历攻击
+        if ".." in file_name or "/" in file_name or "\\" in file_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid file name"
+            )
+
+        # 确保文件名以.xlsx结尾
+        if not file_name.endswith('.xlsx'):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid file type"
+            )
+
+        # 构建文件路径（在临时目录中）
+        file_path = os.path.join(tempfile.gettempdir(), file_name)
+
+        # 检查文件是否存在
+        if not os.path.exists(file_path):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="File not found or has expired"
+            )
+
+        # 生成友好的下载文件名
+        download_name = f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+
+        logger.info(f"User {current_user.username} downloading Excel file: {file_name}")
+
+        # 返回文件
+        return FileResponse(
+            path=file_path,
+            filename=download_name,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f'attachment; filename="{download_name}"'
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading Excel file: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to download file: {str(e)}"
         )

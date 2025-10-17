@@ -185,6 +185,72 @@ class Settings(BaseSettings):
         description="Sentry DSN for error tracking"
     )
 
+    # AI/LLM settings (for MCP AI enhancements)
+    MCP_ENABLE_AI_TOOLS: bool = Field(
+        default=False,
+        description="Enable AI-powered tools for MCP"
+    )
+
+    # OpenAI / LM Studio settings
+    OPENAI_API_KEY: str = Field(
+        default="",
+        description="OpenAI API key (or placeholder for LM Studio)"
+    )
+    OPENAI_BASE_URL: str = Field(
+        default="https://api.openai.com/v1",
+        description="OpenAI API base URL (use http://localhost:1234/v1 for LM Studio)"
+    )
+    OPENAI_MODEL: str = Field(
+        default="gpt-3.5-turbo",
+        description="OpenAI model name"
+    )
+    OPENAI_TIMEOUT: int = Field(
+        default=120,
+        description="OpenAI API request timeout in seconds"
+    )
+    OPENAI_MAX_RETRIES: int = Field(
+        default=3,
+        description="OpenAI API max retry attempts"
+    )
+
+    # Anthropic Claude settings
+    ANTHROPIC_API_KEY: str = Field(
+        default="",
+        description="Anthropic Claude API key"
+    )
+    ANTHROPIC_MODEL: str = Field(
+        default="claude-3-opus-20240229",
+        description="Anthropic Claude model name"
+    )
+
+    # Azure OpenAI settings
+    AZURE_OPENAI_API_KEY: str = Field(
+        default="",
+        description="Azure OpenAI API key"
+    )
+    AZURE_OPENAI_ENDPOINT: str = Field(
+        default="",
+        description="Azure OpenAI endpoint URL"
+    )
+    AZURE_OPENAI_DEPLOYMENT: str = Field(
+        default="",
+        description="Azure OpenAI deployment name"
+    )
+    AZURE_OPENAI_API_VERSION: str = Field(
+        default="2024-02-15-preview",
+        description="Azure OpenAI API version"
+    )
+
+    # Local LLM settings
+    LOCAL_LLM_BASE_URL: str = Field(
+        default="http://localhost:11434",
+        description="Local LLM base URL (e.g., Ollama)"
+    )
+    LOCAL_LLM_MODEL: str = Field(
+        default="llama2",
+        description="Local LLM model name"
+    )
+
     @property
     def database_url_sync(self) -> str:
         """Get synchronous database URL for Alembic."""

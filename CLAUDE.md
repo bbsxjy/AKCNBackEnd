@@ -350,14 +350,16 @@ POST /notifications/create         # Create (admin only)
 - id: Integer (PK, auto-increment)
 - sso_user_id: String (unique)
 - username: String (unique)
-- email: String (unique)
 - full_name: String
+- email: String (unique)
 - department: String
-- role: Enum (ADMIN, MANAGER, EDITOR, VIEWER)
 - is_active: Boolean
 - last_login_at: DateTime
 - created_at: DateTime
 - updated_at: DateTime
+- employee_id: String
+- team: String
+- role: String (ADMIN, MANAGER, EDITOR, VIEWER)
 ```
 
 #### applications
@@ -365,25 +367,25 @@ POST /notifications/create         # Create (admin only)
 - id: Integer (PK, auto-increment)
 - l2_id: String (unique, business key)
 - app_name: String
-- app_tier: Integer
-- belonging_l1_name: String
-- belonging_projects: String
-- belonging_kpi: String
 - ak_supervision_acceptance_year: Integer
 - overall_transformation_target: String
 - is_ak_completed: Boolean
 - is_cloud_native_completed: Boolean
-- is_domain_transformation_completed: Boolean
-- is_dbpm_transformation_completed: Boolean
 - current_transformation_phase: String
 - current_status: String
-- acceptance_status: String
+- app_tier: Integer
+- belonging_l1_name: String
+- belonging_projects: String
+- is_domain_transformation_completed: Boolean
+- is_dbpm_transformation_completed: Boolean
 - dev_mode: String
 - ops_mode: String
 - dev_owner: String
 - dev_team: String
 - ops_owner: String
 - ops_team: String
+- belonging_kpi: String
+- acceptance_status: String
 - planned_requirement_date: Date
 - planned_release_date: Date
 - planned_tech_online_date: Date
@@ -399,12 +401,13 @@ POST /notifications/create         # Create (admin only)
 - updated_by: Integer (FK users.id)
 - created_at: DateTime
 - updated_at: DateTime
+- version: Integer
 ```
 
 #### sub_tasks
 ```sql
 - id: Integer (PK, auto-increment)
-- l2_id: Integer (FK applications.id via l2_id relationship)
+- l2_id: Integer (FK applications.id - NOTE: references applications.id, NOT applications.l2_id)
 - app_name: String
 - sub_target: String
 - version_name: String
@@ -429,6 +432,9 @@ POST /notifications/create         # Create (admin only)
 - updated_by: Integer (FK users.id)
 - created_at: DateTime
 - updated_at: DateTime
+- plan_change_reason: Text
+- plan_change_history: JSONB
+- lock_version: Integer
 ```
 
 #### audit_logs

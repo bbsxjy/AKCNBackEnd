@@ -34,6 +34,9 @@ class MCPSettings(BaseSettings):
     # Local LLM Configuration (Ollama, LlamaCpp, etc.)
     local_llm_base_url: Optional[str] = Field("http://localhost:11434", env="LOCAL_LLM_BASE_URL")
     local_llm_model: str = Field("llama2", env="LOCAL_LLM_MODEL")
+
+    # LM Studio specific settings
+    use_completion_api: bool = Field(False, env="USE_COMPLETION_API")  # Use /completions instead of /chat/completions
     
     # MCP Server Settings
     mcp_server_name: str = Field("AKCN MCP Agent", env="MCP_SERVER_NAME")

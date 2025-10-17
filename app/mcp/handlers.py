@@ -15,9 +15,9 @@ from app.services import (
     SubTaskService,
     CalculationService,
     ExcelService,
-    AuditService,
-    DashboardService
+    AuditService
 )
+from app.services.dashboard_service import dashboard_service
 from app.services.cmdb_query_service import CMDBQueryService
 from app.services.cmdb_import_service import CMDBImportService
 from app.schemas.application import ApplicationCreate, ApplicationUpdate, ApplicationFilter
@@ -161,23 +161,37 @@ async def handle_application_operation(tool_name: str, arguments: Optional[Dict[
                 }
             
             elif tool_name == "app_get":
-                # Get application details
-                app_id = arguments.get("app_id")
+                # Get application details by L2 ID only
                 l2_id = arguments.get("l2_id")
-                
-                if app_id:
-                    app = await ApplicationService.get_application(db, UUID(app_id))
-                elif l2_id:
-                    app = await ApplicationService.get_by_l2_id(db, l2_id)
-                else:
-                    return {"error": "Either app_id or l2_id required"}
-                
+
+                if not l2_id:
+                    return {"error": "l2_id is required"}
+
+                # Create service instance and query by L2 ID
+                # Use include_stats=True to get a dict directly
+                app_service = ApplicationService()
+                app = await app_service.get_application_by_l2_id(db, str(l2_id), include_stats=True)
+
                 if app:
+                    # app is already a dict when include_stats=True
+                    if isinstance(app, dict):
+                        app_data = app
+                    else:
+                        # Fallback: convert Application object to dict
+                        from datetime import datetime, date
+                        app_data = {}
+                        for column in app.__table__.columns:
+                            value = getattr(app, column.name)
+                            if isinstance(value, (datetime, date)):
+                                value = value.isoformat() if value else None
+                            app_data[column.name] = value
+
                     return {
                         "success": True,
-                        "data": app.dict()
+                        "data": app_data
                     }
-                return {"error": "Application not found"}
+
+                return {"error": f"Application not found with L2 ID: {l2_id}"}
             
             elif tool_name == "app_create":
                 # Create new application
@@ -311,7 +325,8 @@ async def handle_excel_operation(tool_name: str, arguments: Optional[Dict[str, A
                     data = await SubTaskService.list_for_export(db, **filters)
                     file_content = await ExcelService.export_subtasks(data)
                 else:
-                    data = await DashboardService.get_report_data(db, **filters)
+                    # Get dashboard summary data for report
+                    data = await dashboard_service.get_summary_stats(db)
                     file_content = await ExcelService.export_report(data)
                 
                 if output_path:
@@ -456,17 +471,17 @@ async def handle_dashboard_stats(tool_name: str, arguments: Optional[Dict[str, A
                 date_range = arguments.get("date_range")
 
                 if stat_type == "summary":
-                    stats = await DashboardService.get_summary_stats(db)
+                    stats = await dashboard_service.get_summary_stats(db)
                 elif stat_type == "progress_trend":
-                    stats = await DashboardService.get_progress_trend(
+                    stats = await dashboard_service.get_progress_trend(
                         db,
                         start_date=date_range.get("start_date") if date_range else None,
                         end_date=date_range.get("end_date") if date_range else None
                     )
                 elif stat_type == "department":
-                    stats = await DashboardService.get_department_distribution(db)
+                    stats = await dashboard_service.get_department_distribution(db)
                 elif stat_type == "delayed":
-                    stats = await DashboardService.get_delayed_summary(db)
+                    stats = await dashboard_service.get_delayed_summary(db)
                 else:
                     return {"error": f"Unknown stat type: {stat_type}"}
 
@@ -482,10 +497,10 @@ async def handle_dashboard_stats(tool_name: str, arguments: Optional[Dict[str, A
 
                 # Get all dashboard data
                 data = {
-                    "summary": await DashboardService.get_summary_stats(db),
-                    "progress_trend": await DashboardService.get_progress_trend(db),
-                    "department": await DashboardService.get_department_distribution(db),
-                    "delayed": await DashboardService.get_delayed_summary(db)
+                    "summary": await dashboard_service.get_summary_stats(db),
+                    "progress_trend": await dashboard_service.get_progress_trend(db),
+                    "department": await dashboard_service.get_department_distribution(db),
+                    "delayed": await dashboard_service.get_delayed_summary(db)
                 }
 
                 if format_type == "json":
@@ -494,14 +509,10 @@ async def handle_dashboard_stats(tool_name: str, arguments: Optional[Dict[str, A
                         "data": json.dumps(data, default=json_serializer, indent=2)
                     }
                 elif format_type in ["csv", "excel"]:
-                    # Convert to tabular format
-                    file_content = await DashboardService.export_to_file(
-                        data, format_type, include_charts
-                    )
+                    # Note: export_to_file method needs to be implemented in dashboard_service
                     return {
-                        "success": True,
-                        "file_content": file_content.hex(),
-                        "format": format_type
+                        "success": False,
+                        "error": "File export not yet implemented. Please use JSON format."
                     }
 
             return {"error": f"Unknown dashboard tool: {tool_name}"}
@@ -689,4 +700,97 @@ async def handle_cmdb_operation(tool_name: str, arguments: Optional[Dict[str, An
 
     except Exception as e:
         logger.error(f"CMDB operation error: {e}")
+        return {"error": str(e)}
+
+
+async def handle_excel_advanced_operation(tool_name: str, arguments: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Handle advanced Excel operations (MCP Excel Server integration)."""
+    try:
+        from app.services.excel_mcp_service import excel_mcp_service
+        from app.core.database import get_db_context
+        import tempfile
+        import os
+
+        async with get_db_context()() as db:
+            if tool_name == "excel_create_report":
+                # 创建专业报表
+                report_type = arguments["report_type"]
+                date_range = arguments.get("date_range")
+                filters = arguments.get("filters", {})
+                include_charts = arguments.get("include_charts", True)
+                format_style = arguments.get("format_style", "professional")
+
+                logger.info(f"Creating Excel report: type={report_type}, include_charts={include_charts}")
+
+                # 获取报表数据
+                report_data = await excel_mcp_service._get_report_data(
+                    report_type=report_type,
+                    db_session=db,
+                    filters=filters
+                )
+
+                # 生成报表
+                excel_bytes = await excel_mcp_service.create_report(
+                    report_type=report_type,
+                    data=report_data,
+                    include_charts=include_charts,
+                    format_style=format_style
+                )
+
+                # 保存到临时文件
+                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx', dir=tempfile.gettempdir())
+                temp_file.write(excel_bytes)
+                temp_file.close()
+
+                logger.info(f"Excel report created: {temp_file.name}, size={len(excel_bytes)} bytes")
+
+                return {
+                    "success": True,
+                    "file_path": temp_file.name,
+                    "file_name": os.path.basename(temp_file.name),
+                    "file_size": len(excel_bytes),
+                    "report_type": report_type,
+                    "message": f"{report_type}报表生成成功"
+                }
+
+            elif tool_name == "excel_generate_from_query":
+                # AI 驱动的报表生成
+                query = arguments["query"]
+                format_style = arguments.get("format_style", "professional")
+
+                logger.info(f"Generating Excel from natural language: {query}")
+
+                result = await excel_mcp_service.generate_from_natural_language(
+                    query=query,
+                    db_session=db,
+                    format_style=format_style
+                )
+
+                if result["success"]:
+                    # 保存到临时文件
+                    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx', dir=tempfile.gettempdir())
+                    temp_file.write(result["excel_bytes"])
+                    temp_file.close()
+
+                    logger.info(f"AI-generated Excel report created: {temp_file.name}")
+
+                    return {
+                        "success": True,
+                        "file_path": temp_file.name,
+                        "file_name": os.path.basename(temp_file.name),
+                        "file_size": len(result["excel_bytes"]),
+                        "report_type": result.get("report_type"),
+                        "query_interpreted": result.get("query_interpreted"),
+                        "message": "AI报表生成成功"
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": "报表生成失败"
+                    }
+
+            return {"error": f"Unknown Excel advanced tool: {tool_name}"}
+
+    except Exception as e:
+        logger.error(f"Excel advanced operation error: {e}", exc_info=True)
         return {"error": str(e)}

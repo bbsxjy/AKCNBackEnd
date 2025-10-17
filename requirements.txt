@@ -21,7 +21,7 @@ python-multipart==0.0.9
 cryptography==43.0.3
 
 # Data validation and serialization
-pydantic==2.10.3
+pydantic==2.12.2
 pydantic-settings==2.6.1
 email-validator==2.2.0
 
@@ -72,10 +72,12 @@ starlette==0.41.3
 pydantic-openapi-schema==1.5.1
 
 # Windows-specific (optional)
-pywin32==308  # Windows only, comment out for Linux/Mac
+pywin32==311  # Windows only, comment out for Linux/Mac
 
 # MCP (Model Context Protocol)
-mcp==1.0.0
+mcp==1.17.0
+excel-mcp-server==0.1.7
+fastmcp==2.12.4
 
 # Optional monitoring (production)
 # sentry-sdk[fastapi]==2.19.0
