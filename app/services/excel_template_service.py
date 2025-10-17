@@ -247,7 +247,7 @@ class AITemplateUnderstanding:
    - created_at, updated_at (创建/更新时间)
 
 2. **sub_tasks** (子任务表)
-   - l2_id (关联应用ID - 外键到applications.id)
+   - l2_id (INTEGER外键，指向applications.id主键，不是applications.l2_id！)
    - app_name (应用名称)
    - sub_target (子任务目标)
    - task_status (任务状态)
@@ -260,6 +260,16 @@ class AITemplateUnderstanding:
    - username, full_name (用户名/全名)
    - department, team (部门/团队)
    - role (角色)
+
+## 重要：表关联规则
+如果需要联合查询applications和sub_tasks表，必须使用：
+- 正确：applications.id = sub_tasks.l2_id
+- 错误：applications.l2_id = sub_tasks.l2_id (类型不匹配！)
+
+原因：
+- applications.id 是 INTEGER 主键
+- applications.l2_id 是 VARCHAR 业务ID(如CI123456)
+- sub_tasks.l2_id 是 INTEGER 外键，指向 applications.id
 
 ## 分析任务
 请分析表头，理解每一列应该映射到哪个数据库字段。

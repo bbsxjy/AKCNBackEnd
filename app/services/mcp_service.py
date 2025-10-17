@@ -563,7 +563,7 @@ class MCPService:
             ],
             "sub_tasks": [
                 "id:INTEGER主键",
-                "l2_id:INTEGER外键指向applications.id",
+                "l2_id:INTEGER外键！！！重要：此字段指向applications.id主键，不是applications.l2_id！！！",
                 "app_name:VARCHAR",
                 "sub_target:VARCHAR",
                 "version_name:VARCHAR",
@@ -687,7 +687,24 @@ class MCPService:
 - 计算百分比时使用 * 100.0 / COUNT 格式确保浮点数除法
 - 确保所有括号都已正确闭合
 - GROUP BY后必须包含所有非聚合字段
-- 表关联规则：applications和sub_tasks关联时使用 applications.id = sub_tasks.l2_id（注意sub_tasks.l2_id是INTEGER外键指向applications.id主键，不是指向applications.l2_id）
+
+！！！超级重要的表关联规则！！！
+applications和sub_tasks表关联时必须使用：
+  正确写法：applications.id = sub_tasks.l2_id
+  错误写法：applications.l2_id = sub_tasks.l2_id（类型不匹配！）
+
+原因解释：
+- applications.id 是 INTEGER 类型的主键
+- applications.l2_id 是 VARCHAR 类型的业务ID（如CI123456）
+- sub_tasks.l2_id 是 INTEGER 类型的外键，指向 applications.id（不是applications.l2_id！）
+
+正确的JOIN示例：
+SELECT a.l2_id, a.app_name, s.sub_target
+FROM applications a
+LEFT JOIN sub_tasks s ON a.id = s.l2_id
+
+错误的JOIN示例（会报类型错误）：
+SELECT ... FROM applications a LEFT JOIN sub_tasks s ON a.l2_id = s.l2_id
 
 SQL模板参考：
 统计查询模板：SELECT 字段名, COUNT 星号 AS 数量, 计算表达式 AS 百分比 FROM 表名 WHERE 条件 GROUP BY 字段名 ORDER BY 排序字段 LIMIT 数量
