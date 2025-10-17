@@ -2,9 +2,11 @@
 AK Cloud Native Transformation Management System - Main Application
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.middleware.logging import LoggingMiddleware
@@ -21,6 +23,42 @@ app = FastAPI(
     redoc_url="/redoc",
     openapi_url="/openapi.json"
 )
+
+
+# Custom exception handler for validation errors to handle encoding issues
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """
+    Handle request validation errors gracefully without attempting to decode invalid bytes.
+
+    This prevents UnicodeDecodeError when FastAPI tries to encode validation errors
+    that contain non-UTF-8 bytes in the request body.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # Log the error with safe representation
+    logger.error(f"Request validation error for {request.method} {request.url.path}")
+
+    # Build safe error details without attempting to decode bytes
+    errors = []
+    for error in exc.errors():
+        safe_error = {
+            "type": error.get("type"),
+            "loc": error.get("loc"),
+            "msg": error.get("msg")
+        }
+        # Avoid including 'input' field which might contain raw bytes
+        errors.append(safe_error)
+
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "detail": errors,
+            "message": "Request validation failed. Please check your request format and encoding."
+        }
+    )
+
 
 # Add middleware in correct order (LoggingMiddleware first, CORS last)
 app.add_middleware(LoggingMiddleware)
