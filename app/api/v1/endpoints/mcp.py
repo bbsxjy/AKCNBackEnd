@@ -602,34 +602,49 @@ async def analyze_with_ai(
 # ========================================
 
 @router.post("/query/applications/stream")
-@router.get("/query/applications/stream")
-async def natural_language_query_stream(
+async def natural_language_query_stream_post(
+    request_data: MCPQueryRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    request: Optional[MCPQueryRequest] = None,
-    query: Optional[str] = None
+    current_user: User = Depends(get_current_user)
 ):
-    """Process natural language query with streaming response.
-
-    This endpoint returns AI responses as they are generated (token by token)
-    using Server-Sent Events (SSE).
+    """Process natural language query with streaming response (POST).
 
     **权限**: All authenticated users
     **响应格式**: text/event-stream (SSE)
+    """
+    return await _natural_language_query_stream_impl(
+        query_text=request_data.query,
+        db=db,
+        current_user=current_user
+    )
 
-    **示例请求 (POST)**:
-    ```bash
-    curl -N -H "Authorization: Bearer token" \\
-         -H "Content-Type: application/json" \\
-         -d '{"query":"查询应用详情"}' \\
-         http://localhost:8000/api/v1/mcp/query/applications/stream
-    ```
 
-    **示例请求 (GET)**:
-    ```bash
-    curl -N -H "Authorization: Bearer token" \\
-         "http://localhost:8000/api/v1/mcp/query/applications/stream?query=查询应用详情"
-    ```
+@router.get("/query/applications/stream")
+async def natural_language_query_stream_get(
+    query: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Process natural language query with streaming response (GET).
+
+    **权限**: All authenticated users
+    **响应格式**: text/event-stream (SSE)
+    """
+    return await _natural_language_query_stream_impl(
+        query_text=query,
+        db=db,
+        current_user=current_user
+    )
+
+
+async def _natural_language_query_stream_impl(
+    query_text: str,
+    db: AsyncSession,
+    current_user: User
+):
+    """Internal implementation of natural language query streaming.
+
+    This function is shared between POST and GET endpoints.
 
     **SSE事件类型**:
     - `status`: 状态更新 (parsing, executing, generating)
@@ -638,11 +653,8 @@ async def natural_language_query_stream(
     - `done`: 完成信号
     - `error`: 错误信息
     """
-    # Handle both GET and POST requests
-    query_text = query if query else (request.query if request else None)
-
-    if not query_text:
-        # Return error for missing query
+    if not query_text or not query_text.strip():
+        # Return error for missing/empty query
         async def error_generator():
             yield f"event: error\ndata: {json.dumps({'error': '缺少查询参数'}, ensure_ascii=False)}\n\n"
             yield f"event: done\ndata: {json.dumps({'success': False}, ensure_ascii=False)}\n\n"
