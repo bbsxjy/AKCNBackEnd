@@ -237,7 +237,6 @@ class AITemplateUnderstanding:
    - app_name (应用名称)
    - overall_transformation_target (转型目标: AK/云原生/AK+云原生)
    - current_status (当前状态)
-   - progress_percentage (进度百分比)
    - dev_team (开发团队)
    - dev_owner (负责人)
    - planned_biz_online_date (计划上线日期)
@@ -245,13 +244,14 @@ class AITemplateUnderstanding:
    - delay_days (延期天数)
    - is_delayed (是否延期)
    - created_at, updated_at (创建/更新时间)
+   - 注意：applications表没有progress_percentage字段！
 
 2. **sub_tasks** (子任务表)
    - l2_id (INTEGER外键，指向applications.id主键，不是applications.l2_id！)
    - app_name (应用名称)
    - sub_target (子任务目标)
    - task_status (任务状态)
-   - progress_percentage (进度)
+   - progress_percentage (进度) ← 只有sub_tasks表有此字段！
    - is_blocked (是否阻塞)
    - planned_biz_online_date (计划日期)
    - actual_biz_online_date (实际日期)
@@ -336,14 +336,12 @@ class AITemplateUnderstanding:
                 "description": ""
             }
 
-            # Application field mapping
+            # Application field mapping (applications table only)
+            # Note: progress_percentage is NOT in applications table, only in sub_tasks
             if "l2" in header_lower or "应用id" in header_lower or "id" in header_lower:
                 mapping["db_field"] = "l2_id"
             elif "应用名" in header_lower or "名称" in header_lower:
                 mapping["db_field"] = "app_name"
-            elif "进度" in header_lower and "%" in header:
-                mapping["db_field"] = "progress_percentage"
-                mapping["data_type"] = "percentage"
             elif "状态" in header_lower:
                 mapping["db_field"] = "current_status"
             elif "团队" in header_lower or "部门" in header_lower:
@@ -364,6 +362,7 @@ class AITemplateUnderstanding:
             elif "创建" in header_lower and ("日期" in header or "时间" in header):
                 mapping["db_field"] = "created_at"
                 mapping["data_type"] = "date"
+            # Note: If template needs progress_percentage, use sub_tasks or JOIN query
 
             column_mappings.append(mapping)
 
@@ -372,7 +371,7 @@ class AITemplateUnderstanding:
             "column_mappings": column_mappings,
             "filters": {},
             "custom_sql": None,
-            "reasoning": "基于规则的列名匹配"
+            "reasoning": "基于规则的列名匹配（applications表字段）"
         }
 
 
@@ -471,13 +470,13 @@ class ExcelTemplateFillerService:
                 apps = result.scalars().all()
 
                 # Convert to dict list
+                # Note: applications table does NOT have progress_percentage field
                 return [
                     {
                         "l2_id": app.l2_id,
                         "app_name": app.app_name,
                         "overall_transformation_target": app.overall_transformation_target,
                         "current_status": app.current_status,
-                        "progress_percentage": app.progress_percentage,
                         "dev_team": app.dev_team,
                         "dev_owner": app.dev_owner,
                         "ops_team": app.ops_team,
