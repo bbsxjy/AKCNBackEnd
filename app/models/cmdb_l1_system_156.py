@@ -27,10 +27,10 @@ class CMDBL1System156(Base):
 
     # 功能和开发信息
     system_function = Column(Text, nullable=True, comment="系统功能")
-    dev_unit = Column(String(100), nullable=True, comment="系统开发单位")
+    dev_unit = Column(String(500), nullable=True, comment="系统开发单位")
 
     # 统计和状态
-    stats_tag_1 = Column(String(100), nullable=True, comment="统计标签1")
+    stats_tag_1 = Column(String(500), nullable=True, comment="统计标签1")
     status = Column(String(50), nullable=True, comment="状态")
     xinchuang_acceptance_year = Column(Integer, nullable=True, comment="信创验收年份")
 

@@ -51,9 +51,9 @@ class CMDBL1System87(Base):
     belongs_to_capability = Column(String(100), nullable=True, comment="所属能力")
 
     # 开发和运维信息
-    dev_unit = Column(String(100), nullable=True, comment="系统开发单位")
+    dev_unit = Column(String(500), nullable=True, comment="系统开发单位")
     dev_leader = Column(String(100), nullable=True, comment="系统开发负责人")
-    ops_unit = Column(String(100), nullable=True, comment="系统运维单位")
+    ops_unit = Column(String(500), nullable=True, comment="系统运维单位")
     ops_leader = Column(String(100), nullable=True, comment="系统运维负责人")
     business_supervisor_unit = Column(String(100), nullable=True, comment="业务主管单位")
 

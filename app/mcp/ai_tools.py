@@ -186,19 +186,64 @@ class AIAssistant:
         if not self.enabled:
             return "AI report generation is disabled"
 
+        # Extract actual data from API response structure
+        # Handle cases where data is wrapped in {"success": true, "data": {...}}
+        actual_data = data
+        if isinstance(data, dict):
+            # Check if this is an API response with success flag
+            if "success" in data and "data" in data:
+                # Extract the actual data content, not the API status
+                actual_data = data["data"]
+                logger.info("Extracted actual data from API response structure")
+            # Also handle result wrapper
+            elif "result" in data and isinstance(data["result"], dict):
+                if "data" in data["result"]:
+                    actual_data = data["result"]["data"]
+                else:
+                    actual_data = data["result"]
+
         # Sanitize data to avoid Jinja2 template parsing issues
-        safe_data = sanitize_data_for_jinja2(data)
+        safe_data = sanitize_data_for_jinja2(actual_data)
 
         prompt = f"""
-        Generate a professional summary report from this data:
+你是AK/云原生转型项目管理系统的专业分析师。请基于以下项目数据生成专业分析报告。
 
-        {safe_data}
+## 重要提示
+请分析实际的项目数据内容，而不是API响应状态。
+数据中的"success: true"表示API调用成功，不代表项目成功。
+请关注项目的实际状态、进度、问题等业务层面的信息。
 
-        The report should be:
-        1. Clear and concise
-        2. Highlight key metrics
-        3. Identify trends or issues
-        4. Provide actionable insights
+## 项目数据
+{safe_data}
+
+## 报告要求
+请生成一份包含以下内容的专业项目分析报告：
+
+### 1. 项目基本信息总结
+- 提取并列出关键信息（如L2 ID、应用名称、所属系统等）
+- 说明当前转型阶段和整体目标
+
+### 2. 项目执行状态分析
+- 分析当前状态（current_status字段）的实际含义
+- 评估AK和云原生的完成情况（is_ak_completed, is_cloud_native_completed）
+- 分析进度百分比和完成率
+
+### 3. 时间节点分析
+- 对比计划日期与实际日期
+- 分析是否存在延期（is_delayed, delay_days）
+- 评估关键里程碑的达成情况
+
+### 4. 风险与问题识别
+- 基于数据识别潜在风险
+- 分析备注（notes）中提到的具体问题
+- 评估验收状态（acceptance_status）
+
+### 5. 可行动建议
+- 基于当前状态提供3-5条具体建议
+- 针对识别的问题提出解决方案
+- 建议下一步行动方向
+
+请使用专业的项目管理术语，确保分析基于实际数据而非臆测。
         """
 
         try:

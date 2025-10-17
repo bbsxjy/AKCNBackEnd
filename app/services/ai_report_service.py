@@ -384,9 +384,36 @@ class AIReportService:
         """Generate AI-powered natural language narrative."""
         from app.mcp.ai_tools import ai_assistant
 
+        # Extract actual data rows for detailed analysis
+        actual_rows = results.get("rows", [])
+        columns = results.get("columns", [])
+
+        # Format sample data for AI to understand the content
+        sample_data = ""
+        if actual_rows and columns:
+            # Show first few rows as examples
+            sample_rows = actual_rows[:3] if len(actual_rows) > 3 else actual_rows
+            sample_data = "\n### 数据示例（前几行）\n"
+            for i, row in enumerate(sample_rows, 1):
+                sample_data += f"\n记录{i}:\n"
+                for col_idx, col_name in enumerate(columns):
+                    if col_idx < len(row):
+                        value = row[col_idx]
+                        # Format value for display
+                        if value is None:
+                            value = "无"
+                        elif isinstance(value, bool):
+                            value = "是" if value else "否"
+                        sample_data += f"  {col_name}: {value}\n"
+
         # Build a data-rich prompt for AI
         prompt = f"""
-你是一个AK/云原生转型项目管理系统的数据分析专家。请基于以下实际的SQL查询分析结果，生成一份专业的项目报告。
+你是AK/云原生转型项目管理系统的数据分析专家。请基于以下SQL查询的实际数据结果，生成一份专业的项目分析报告。
+
+## 重要提示
+- 请分析实际的数据内容，而不是查询状态
+- "success: true"只表示查询执行成功，不代表项目成功
+- 请基于数据中的字段值（如current_status、is_delayed等）分析项目实际状态
 
 ## 查询分析
 - 查询意图: {analysis['query_info']['type']}
@@ -395,6 +422,8 @@ class AIReportService:
 ## 数据概览
 - 总记录数: {analysis['data_summary']['total_rows']}条
 - 数据列: {', '.join(analysis['data_summary']['columns'])}
+
+{sample_data}
 
 ## 统计数据
 {AIReportService._format_statistics_for_prompt(analysis['statistics'])}
@@ -405,21 +434,39 @@ class AIReportService:
 ## 异常数据
 {AIReportService._format_anomalies_for_prompt(analysis['anomalies'])}
 
-请生成一份包含以下内容的报告:
-1. **执行摘要**: 用2-3句话概括最重要的发现
-2. **详细分析**: 基于实际数据深入解读当前项目状态，包括:
-   - 进度情况(如果有进度数据)
-   - 团队表现(如果有团队数据)
-   - 延期问题(如果有延期数据)
-   - 异常情况(如果有异常数据)
-3. **趋势判断**: 基于数据指标判断整体趋势(积极/需要关注/警示)
-4. **行动建议**: 提供3-5条具体的、可执行的改进建议
+## 报告要求
+请生成一份专业的项目分析报告，包含以下内容：
+
+### 1. 执行摘要
+用2-3句话概括最重要的发现，必须基于实际数据字段值
+
+### 2. 详细分析
+基于实际数据深入解读，重点关注：
+- **项目状态**: 分析current_status、acceptance_status等字段的实际值
+- **完成情况**: 基于is_ak_completed、is_cloud_native_completed等布尔字段
+- **进度分析**: 如有progress_percentage、completion_rate等字段
+- **延期情况**: 基于is_delayed、delay_days等字段的实际值
+- **团队分布**: 如有dev_team、ops_team等字段
+
+### 3. 问题识别
+- 从数据中识别的具体问题（如延期、未完成等）
+- 从notes或备注字段中提取的关键信息
+- 异常数据或需要关注的指标
+
+### 4. 趋势判断
+基于数据指标判断整体趋势：
+- ✅ 积极向好：大部分项目按计划进行
+- ⚠️ 需要关注：存在一定风险或问题
+- 🚨 警示状态：严重延期或问题较多
+
+### 5. 行动建议
+提供3-5条具体的、可执行的改进建议，必须与数据发现直接相关
 
 要求:
-- 必须基于实际数据，不要臆测
-- 引用具体数字和百分比
-- 语言专业、简洁、客观
-- 用中文回答
+- 必须基于查询返回的实际数据字段和值
+- 引用具体的数字、百分比和状态
+- 不要将"success: true"误解为项目成功
+- 语言专业、客观、基于事实
 """
 
         # Call AI to generate narrative

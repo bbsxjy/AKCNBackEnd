@@ -52,7 +52,9 @@
       "Bash(move excel_mcp_service.py excel_mcp_service_old.py)",
       "Bash(ren:*)",
       "Read(//c/Users/Administrator/Desktop/TrackerBuilder/**)",
-      "Bash(if exist nul del /f nul)"
+      "Bash(if exist nul del /f nul)",
+      "Bash(alembic current:*)",
+      "Bash(alembic upgrade:*)"
     ],
     "deny": [],
     "ask": []
