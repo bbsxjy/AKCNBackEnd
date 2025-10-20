@@ -278,6 +278,7 @@ async def natural_language_query(
         )
 
         # AI Enhancement - generate data-driven intelligent report
+        # 注意：模板式报告生成功能已禁用，仅保留智能数据分析
         if enable_ai and ai_assistant.enabled and exec_result.success and exec_result.result:
             try:
                 # Use the new data-driven report generation service
@@ -303,10 +304,12 @@ async def natural_language_query(
                         response.query_interpretation += f"\n\n关键洞察:\n" + "\n".join(
                             f"- {insight}" for insight in intelligent_report["insights"]
                         )
-                else:
-                    # Fallback to simple report generation for other tools
-                    ai_report = await ai_assistant.generate_report(exec_result.result)
-                    response.ai_report = ai_report
+                # else:
+                #     # 模板式报告生成已禁用
+                #     # Fallback to simple report generation for other tools
+                #     # ai_report = await ai_assistant.generate_report(exec_result.result)
+                #     # response.ai_report = ai_report
+                #     pass
 
                 # Get AI suggestions for next actions
                 suggestions = await ai_assistant.suggest_next_actions({
@@ -472,6 +475,8 @@ async def generate_ai_report(
 ) -> AIReportResponse:
     """Generate AI-powered natural language report from structured data.
 
+    **注意**: 此功能当前已禁用 (DISABLED)
+
     **权限**: All authenticated users
     **要求**: MCP_ENABLE_AI_TOOLS=True
 
@@ -489,35 +494,43 @@ async def generate_ai_report(
     }
     ```
     """
-    if not ai_assistant.enabled:
-        return AIReportResponse(
-            success=False,
-            error="AI功能未启用。请在.env中设置 MCP_ENABLE_AI_TOOLS=True 并配置AI服务。"
-        )
+    # AI报告生成功能已禁用
+    logger.info(f"AI report generation is disabled (requested by user: {current_user.username})")
+    return AIReportResponse(
+        success=False,
+        error="AI报告生成功能当前已禁用。如需使用，请联系系统管理员。"
+    )
 
-    try:
-        logger.info(f"Generating AI report for user: {current_user.username}")
-
-        # Generate report using AI
-        report = await ai_assistant.generate_report(request.data)
-
-        return AIReportResponse(
-            success=True,
-            report=report,
-            metadata={
-                "report_type": request.report_type,
-                "language": request.language,
-                "generated_at": datetime.now().isoformat(),
-                "provider": ai_assistant.provider
-            }
-        )
-
-    except Exception as e:
-        logger.error(f"AI report generation failed: {e}")
-        return AIReportResponse(
-            success=False,
-            error=f"生成报告失败: {str(e)}"
-        )
+    # 原有代码已禁用
+    # if not ai_assistant.enabled:
+    #     return AIReportResponse(
+    #         success=False,
+    #         error="AI功能未启用。请在.env中设置 MCP_ENABLE_AI_TOOLS=True 并配置AI服务。"
+    #     )
+    #
+    # try:
+    #     logger.info(f"Generating AI report for user: {current_user.username}")
+    #
+    #     # Generate report using AI
+    #     report = await ai_assistant.generate_report(request.data)
+    #
+    #     return AIReportResponse(
+    #         success=True,
+    #         report=report,
+    #         metadata={
+    #             "report_type": request.report_type,
+    #             "language": request.language,
+    #             "generated_at": datetime.now().isoformat(),
+    #             "provider": ai_assistant.provider
+    #         }
+    #     )
+    #
+    # except Exception as e:
+    #     logger.error(f"AI report generation failed: {e}")
+    #     return AIReportResponse(
+    #         success=False,
+    #         error=f"生成报告失败: {str(e)}"
+    #     )
 
 
 @router.post("/ai/suggest/", response_model=AISuggestionResponse)
