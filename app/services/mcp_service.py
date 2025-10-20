@@ -81,7 +81,7 @@ class MCPService:
             "parameters": {
                 "l2_id": {
                     "type": "string",
-                    "description": "L2业务ID/配置ID（字符串格式，如CI123456、000088398等）",
+                    "description": "L2业务ID/配置ID（字符串格式，如CI00123456等）",
                     "required": True
                 }
             }
@@ -94,20 +94,20 @@ class MCPService:
             "parameters": {
                 "stat_type": {
                     "type": "string",
-                    "description": "统计类型: summary/progress_trend/department/delayed",
+                    "description": "统计类型: summary/progress_trend/delayed",
                     "required": True
                 }
             }
         },
         {
             "name": "excel_create_report",
-            "description": "创建专业的Excel报表（项目进度、延期分析、部门对比、汇总报表）",
+            "description": "创建专业的Excel报表（项目进度、延期分析、汇总报表）",
             "category": "excel_advanced",
             "requiresEdit": False,
             "parameters": {
                 "report_type": {
                     "type": "string",
-                    "description": "报表类型: progress/delayed/department/summary",
+                    "description": "报表类型: progress/delayed/summary",
                     "required": True
                 },
                 "date_range": {
@@ -889,7 +889,7 @@ class MCPService:
 - 如果是业务查询继续第二步
 
 第二步：选择合适的工具。
-- 如果查询L2 ID的应用详情，使用app_get工具，l2_id参数格式如CI123456或000088398
+- 如果查询L2 ID的应用详情，使用app_get工具，l2_id参数格式如CI123456
 - 如果查询列表或统计，使用对应工具
 - 如果需要复杂查询，使用db_query工具生成SQL
 
