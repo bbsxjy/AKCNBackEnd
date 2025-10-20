@@ -54,7 +54,8 @@
       "Read(//c/Users/Administrator/Desktop/TrackerBuilder/**)",
       "Bash(if exist nul del /f nul)",
       "Bash(alembic current:*)",
-      "Bash(alembic upgrade:*)"
+      "Bash(alembic upgrade:*)",
+      "*"
     ],
     "deny": [],
     "ask": []

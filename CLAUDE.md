@@ -87,6 +87,28 @@ APP_NAME=AKCN Project Management
 APP_VERSION=1.0.0
 DEBUG=True
 CORS_ORIGINS=["http://localhost:3000", "http://localhost:8080"]
+
+# AI/LLM Configuration (for AI-powered features)
+MCP_ENABLE_AI_TOOLS=True
+
+# Option 1: Cloud LLM Service (Recommended for production)
+OPENAI_API_KEY=sk-your-api-key-here
+OPENAI_BASE_URL=https://api.siliconflow.cn/v1  # SiliconFlow, 阿里云百炼, etc.
+OPENAI_MODEL=Qwen/Qwen2.5-7B-Instruct
+
+# Option 2: Self-hosted LLM (vLLM on GPU cloud platforms)
+# OPENAI_API_KEY=your-custom-key
+# OPENAI_BASE_URL=http://your-instance-ip:8000/v1
+# OPENAI_MODEL=Qwen/Qwen2.5-7B-Instruct
+
+# Option 3: Local LLM (LM Studio for development only)
+# OPENAI_API_KEY=lm-studio
+# OPENAI_BASE_URL=http://localhost:1234/v1
+# OPENAI_MODEL=qwen/qwen3-4b-2507
+
+# LLM Settings
+OPENAI_TIMEOUT=120
+OPENAI_MAX_RETRIES=3
 ```
 
 ### Running the Application
@@ -101,6 +123,134 @@ gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
 # http://localhost:8000/docs (Swagger UI)
 # http://localhost:8000/redoc (ReDoc)
 ```
+
+## AI/LLM Configuration
+
+This system includes AI-powered features for natural language queries, report generation, and intelligent data analysis. You can use either cloud-based LLM services or local models.
+
+### Cloud LLM Services (Recommended)
+
+**Benefits:**
+- Fast inference (1-3 seconds vs 10-30 seconds locally)
+- No local GPU required
+- Always available
+- Low cost (typically $2-5/month for typical usage)
+
+**Supported Platforms:**
+
+1. **SiliconFlow (Recommended for beginners)**
+   - Sign up: https://cloud.siliconflow.cn/
+   - Get API key from console
+   - Supports Qwen, DeepSeek, and other open-source models
+   - Very affordable pricing
+
+2. **Alibaba Cloud Bailian (Enterprise)**
+   - Sign up: https://www.aliyun.com/product/bailian
+   - Enterprise-grade stability
+   - Compliance and data security
+
+3. **Self-hosted on GPU Cloud (矩池云, etc.)**
+   - Deploy vLLM on RTX 4090 or A100
+   - Full control and data privacy
+   - Cost-effective for high-volume usage
+
+4. **Local LLM with LM Studio (Development only)**
+   - Free but slow on CPU/consumer GPUs
+   - See `docs/LM_STUDIO_SETUP.md`
+
+### Quick Setup (SiliconFlow Example)
+
+```bash
+# 1. Get API key from https://cloud.siliconflow.cn/
+
+# 2. Update .env file:
+MCP_ENABLE_AI_TOOLS=True
+OPENAI_API_KEY=sk-your-siliconflow-api-key
+OPENAI_BASE_URL=https://api.siliconflow.cn/v1
+OPENAI_MODEL=Qwen/Qwen2.5-7B-Instruct
+OPENAI_TIMEOUT=60
+OPENAI_MAX_RETRIES=3
+
+# 3. Test configuration:
+python test_cloud_llm.py
+
+# 4. Start backend:
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Available Models
+
+| Platform | Model | Speed | Cost | Use Case |
+|----------|-------|-------|------|----------|
+| SiliconFlow | Qwen/Qwen2.5-7B-Instruct | Fast | Low | General purpose |
+| SiliconFlow | Qwen/Qwen3-Next-80B | Very Fast | Medium | Advanced reasoning |
+| SiliconFlow | DeepSeek-V3.1 | Very Fast | Medium | Code & analysis |
+| Alibaba | qwen-plus | Very Fast | Medium | Production |
+| Local | Qwen2.5-7B (LM Studio) | Slow | Free | Development |
+
+### AI Features
+
+Once configured, the system provides:
+
+1. **Natural Language Queries**
+   - Query database using plain Chinese/English
+   - Automatically converts to SQL
+   - Example: "查询所有延期的应用项目"
+
+2. **AI Report Generation**
+   - Generate intelligent project summaries
+   - Analyze trends and patterns
+   - Provide actionable recommendations
+
+3. **Smart Excel Operations**
+   - AI-powered template filling
+   - Intelligent data mapping
+   - Context-aware report generation
+
+4. **Data Analysis**
+   - Identify delays and bottlenecks
+   - Suggest improvements
+   - Risk assessment
+
+### Testing AI Configuration
+
+```bash
+# Run comprehensive test suite
+python test_cloud_llm.py
+
+# Test individual features
+python -c "
+from app.mcp.ai_tools import ai_assistant
+print('AI Enabled:', ai_assistant.enabled)
+print('Provider:', ai_assistant.provider)
+"
+
+# Test API endpoint
+curl http://localhost:8000/api/v1/mcp/health
+```
+
+### Troubleshooting
+
+**AI features not working:**
+- Verify `MCP_ENABLE_AI_TOOLS=True` in .env
+- Check API key is valid and has sufficient balance
+- Test network connectivity to API endpoint
+- Review logs in `logs/app.log`
+
+**Slow responses:**
+- Increase `OPENAI_TIMEOUT` in .env
+- Consider upgrading to faster model
+- Check network latency
+
+**Invalid API key:**
+- Regenerate key from platform console
+- Ensure no extra spaces in .env file
+- Check API key format matches platform requirements
+
+For detailed setup instructions, see:
+- **Cloud LLM Setup**: `docs/CLOUD_LLM_SETUP.md`
+- **Local LM Studio**: `docs/LM_STUDIO_SETUP.md`
+- **AI Features Guide**: `docs/AI_QUICK_START.md`
 
 ## Project Structure
 
@@ -467,10 +617,161 @@ POST /notifications/create         # Create (admin only)
 - updated_at: DateTime
 ```
 
+#### announcements
+```sql
+- id: Integer (PK, auto-increment)
+- title: String
+- content: Text
+- priority: String (LOW, MEDIUM, HIGH, URGENT)
+- status: String (DRAFT, PUBLISHED, ARCHIVED)
+- created_by_user_id: Integer (FK users.id)
+- is_pinned: Boolean
+- publish_date: DateTime
+- expire_date: DateTime
+- created_at: DateTime
+- updated_at: DateTime
+```
+
+#### task_assignments
+```sql
+- id: Integer (PK, auto-increment)
+- application_id: Integer (FK applications.id, CASCADE)
+- assigned_to_user_id: Integer (FK users.id, CASCADE)
+- assigned_by_user_id: Integer (FK users.id)
+- task_type: String (UPDATE_PROGRESS, FIX_BLOCKING, COMPLETE_MILESTONE, GENERAL)
+- title: String
+- description: Text
+- priority: String (LOW, MEDIUM, HIGH, URGENT)
+- due_date: DateTime
+- status: String (PENDING, IN_PROGRESS, COMPLETED, CANCELLED)
+- completed_at: DateTime
+- created_at: DateTime
+- updated_at: DateTime
+```
+
+#### cmdb_l1_systems_156
+```sql
+- id: Integer (PK, auto-increment)
+- config_id: String (unique, indexed)
+- short_name: String (indexed)
+- management_level: String
+- belongs_to_domain: String
+- belongs_to_layer: String
+- system_function: Text
+- dev_unit: String
+- stats_tag_1: String
+- status: String
+- xinchuang_acceptance_year: Integer
+- created_at: DateTime
+- updated_at: DateTime
+- imported_at: DateTime
+```
+
+#### cmdb_l1_systems_87
+```sql
+- id: Integer (PK, auto-increment)
+- config_id: String (unique, indexed)
+- short_name: String (indexed)
+- description: Text
+- status: String
+- management_level: String
+- deployment_architecture: String
+- deployment_region: String
+- djbh_filing_number: String
+- djbh_level: String
+- djbh_regulatory_requirement: String
+- multi_center_optimization_task: String
+- multi_center_optimization_status: String
+- function_positioning: Text
+- dev_language: String
+- daily_business_volume: Float
+- peak_tps: Float
+- is_critical_system: String
+- data_impact: String
+- belongs_to_domain: String
+- belongs_to_layer: String
+- belongs_to_platform: String
+- belongs_to_capability: String
+- dev_unit: String
+- dev_leader: String
+- ops_unit: String
+- ops_leader: String
+- business_supervisor_unit: String
+- registered_users: Integer
+- created_at: DateTime
+- updated_at: DateTime
+- imported_at: DateTime
+```
+
+#### cmdb_l2_applications
+```sql
+- id: Integer (PK, auto-increment)
+- config_id: String (unique, indexed)
+- short_name: String (indexed)
+- english_name: String
+- description: Text
+- status: String
+- system_status: String
+- management_requirement_level: String
+- management_level: String
+- system_ownership: String
+- service_target: String
+- system_function: Text
+- dev_unit: String
+- dev_contact: String
+- ops_unit: String
+- ops_contact: String
+- deployment_env: String
+- business_continuity_mode: String
+- business_continuity_location: String
+- business_supervisor_unit: String
+- contact_person: String
+- business_operation_unit: String
+- business_operation_contact: String
+- other_names: Text
+- level_1_category: String
+- level_2_category: String
+- level_3_category: String
+- classification_situation: String
+- upgrade_downgrade_todo: Text
+- djbh_requirement: String
+- djbh_assessment_level: String
+- djbh_filing_level: String
+- djbh_system_name: String
+- has_source_code: String
+- dev_mode: String
+- ops_mode: String
+- daily_transaction_volume: Float
+- daily_call_volume: Float
+- daily_active_users: Float
+- regulatory_reputation_impact: String
+- application_timeliness: String
+- has_online_function: String
+- belongs_to_156l1: String (indexed)
+- belongs_to_87l1: String (indexed)
+- belongs_to_platform: String
+- belongs_to_capability: String
+- xinchuang_plan: String
+- planned_offline_time: DateTime
+- offline_time: DateTime
+- related_process: Text
+- first_production_time: DateTime
+- create_date: DateTime
+- cloud_native_transformation: String
+- stats_tag_1: String
+- created_at: DateTime
+- updated_at: DateTime
+- imported_at: DateTime
+```
+
 ### Relationships
-- Application ↔ SubTasks: One-to-Many (via l2_id)
+- Application ↔ SubTasks: One-to-Many (via applications.id = sub_tasks.l2_id)
+- Application ↔ TaskAssignments: One-to-Many (via applications.id = task_assignments.application_id)
 - User ↔ Applications: Many-to-Many (created_by, updated_by)
 - User ↔ SubTasks: Many-to-Many (created_by, updated_by)
+- User ↔ TaskAssignments: Many-to-Many (assigned_to_user_id, assigned_by_user_id)
+- User ↔ Announcements: One-to-Many (created_by_user_id)
+- CMDB L2 Applications ↔ CMDB L1 Systems: Many-to-One (belongs_to_156l1, belongs_to_87l1)
 - All tables → AuditLogs: Polymorphic relationship via record_id
 
 ## Development Guidelines
