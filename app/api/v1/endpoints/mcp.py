@@ -762,33 +762,33 @@ async def _natural_language_query_stream_impl(
                 yield f"event: done\ndata: {json.dumps({'success': False}, ensure_ascii=False)}\n\n"
                 return
 
-            # Phase 3: Generate AI report (streaming)
-            if ai_assistant.enabled and exec_result.result:
-                yield f"event: status\ndata: {json.dumps({'phase': 'generating', 'message': '正在生成AI报告...'}, ensure_ascii=False)}\n\n"
-
-                # Generate streaming report (use sanitizer to avoid Jinja2 issues)
-                from app.mcp.ai_tools import sanitize_data_for_jinja2
-                safe_data = sanitize_data_for_jinja2(exec_result.result)
-
-                prompt = f"""
-                Generate a professional summary report from this data:
-
-                {safe_data}
-
-                The report should be:
-                1. Clear and concise
-                2. Highlight key metrics
-                3. Identify trends or issues
-                4. Provide actionable insights
-                """
-
-                try:
-                    async for chunk in ai_assistant._call_llm_stream(prompt):
-                        # Send each chunk as it's generated
-                        yield f"event: ai_chunk\ndata: {json.dumps({'content': chunk}, ensure_ascii=False)}\n\n"
-                except Exception as ai_error:
-                    logger.warning(f"AI streaming failed: {ai_error}")
-                    yield f"event: error\ndata: {json.dumps({'error': 'AI生成失败', 'details': str(ai_error)}, ensure_ascii=False)}\n\n"
+            # Phase 3: AI报告生成已禁用
+            # if ai_assistant.enabled and exec_result.result:
+            #     yield f"event: status\ndata: {json.dumps({'phase': 'generating', 'message': '正在生成AI报告...'}, ensure_ascii=False)}\n\n"
+            #
+            #     # Generate streaming report (use sanitizer to avoid Jinja2 issues)
+            #     from app.mcp.ai_tools import sanitize_data_for_jinja2
+            #     safe_data = sanitize_data_for_jinja2(exec_result.result)
+            #
+            #     prompt = f"""
+            #     Generate a professional summary report from this data:
+            #
+            #     {safe_data}
+            #
+            #     The report should be:
+            #     1. Clear and concise
+            #     2. Highlight key metrics
+            #     3. Identify trends or issues
+            #     4. Provide actionable insights
+            #     """
+            #
+            #     try:
+            #         async for chunk in ai_assistant._call_llm_stream(prompt):
+            #             # Send each chunk as it's generated
+            #             yield f"event: ai_chunk\ndata: {json.dumps({'content': chunk}, ensure_ascii=False)}\n\n"
+            #     except Exception as ai_error:
+            #         logger.warning(f"AI streaming failed: {ai_error}")
+            #         yield f"event: error\ndata: {json.dumps({'error': 'AI生成失败', 'details': str(ai_error)}, ensure_ascii=False)}\n\n"
 
             # Phase 4: Done
             yield f"event: done\ndata: {json.dumps({'success': True, 'message': '查询完成'}, ensure_ascii=False)}\n\n"
@@ -816,56 +816,66 @@ async def generate_ai_report_stream(
 ):
     """Generate AI report with streaming response.
 
+    **注意**: 此功能当前已禁用 (DISABLED)
+
     **权限**: All authenticated users
     **要求**: MCP_ENABLE_AI_TOOLS=True
     **响应格式**: text/event-stream (SSE)
     """
-    if not ai_assistant.enabled:
-        async def error_generator():
-            yield f"event: error\ndata: {json.dumps({'error': 'AI功能未启用'}, ensure_ascii=False)}\n\n"
-            yield f"event: done\ndata: {json.dumps({'success': False}, ensure_ascii=False)}\n\n"
+    # AI报告流式生成功能已禁用
+    async def error_generator():
+        yield f"event: error\ndata: {json.dumps({'error': 'AI报告生成功能当前已禁用'}, ensure_ascii=False)}\n\n"
+        yield f"event: done\ndata: {json.dumps({'success': False}, ensure_ascii=False)}\n\n"
 
-        return StreamingResponse(error_generator(), media_type="text/event-stream")
+    return StreamingResponse(error_generator(), media_type="text/event-stream")
 
-    async def event_generator():
-        try:
-            # Sanitize data to avoid Jinja2 template issues
-            from app.mcp.ai_tools import sanitize_data_for_jinja2
-            safe_data = sanitize_data_for_jinja2(request.data)
-
-            prompt = f"""
-            Generate a professional summary report from this data:
-
-            {safe_data}
-
-            The report should be:
-            1. Clear and concise
-            2. Highlight key metrics
-            3. Identify trends or issues
-            4. Provide actionable insights
-            """
-
-            # Stream AI response
-            async for chunk in ai_assistant._call_llm_stream(prompt):
-                yield f"event: chunk\ndata: {json.dumps({'content': chunk}, ensure_ascii=False)}\n\n"
-
-            # Done
-            yield f"event: done\ndata: {json.dumps({'success': True}, ensure_ascii=False)}\n\n"
-
-        except Exception as e:
-            logger.error(f"AI report streaming failed: {e}")
-            yield f"event: error\ndata: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
-            yield f"event: done\ndata: {json.dumps({'success': False}, ensure_ascii=False)}\n\n"
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive"
-        }
-    )
+    # 原有代码已禁用
+    # if not ai_assistant.enabled:
+    #     async def error_generator():
+    #         yield f"event: error\ndata: {json.dumps({'error': 'AI功能未启用'}, ensure_ascii=False)}\n\n"
+    #         yield f"event: done\ndata: {json.dumps({'success': False}, ensure_ascii=False)}\n\n"
+    #
+    #     return StreamingResponse(error_generator(), media_type="text/event-stream")
+    #
+    # async def event_generator():
+    #     try:
+    #         # Sanitize data to avoid Jinja2 template issues
+    #         from app.mcp.ai_tools import sanitize_data_for_jinja2
+    #         safe_data = sanitize_data_for_jinja2(request.data)
+    #
+    #         prompt = f"""
+    #         Generate a professional summary report from this data:
+    #
+    #         {safe_data}
+    #
+    #         The report should be:
+    #         1. Clear and concise
+    #         2. Highlight key metrics
+    #         3. Identify trends or issues
+    #         4. Provide actionable insights
+    #         """
+    #
+    #         # Stream AI response
+    #         async for chunk in ai_assistant._call_llm_stream(prompt):
+    #             yield f"event: chunk\ndata: {json.dumps({'content': chunk}, ensure_ascii=False)}\n\n"
+    #
+    #         # Done
+    #         yield f"event: done\ndata: {json.dumps({'success': True}, ensure_ascii=False)}\n\n"
+    #
+    #     except Exception as e:
+    #         logger.error(f"AI report streaming failed: {e}")
+    #         yield f"event: error\ndata: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
+    #         yield f"event: done\ndata: {json.dumps({'success': False}, ensure_ascii=False)}\n\n"
+    #
+    # return StreamingResponse(
+    #     event_generator(),
+    #     media_type="text/event-stream",
+    #     headers={
+    #         "Cache-Control": "no-cache",
+    #         "X-Accel-Buffering": "no",
+    #         "Connection": "keep-alive"
+    #     }
+    # )
 
 
 # ========================================
