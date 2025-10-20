@@ -48,8 +48,11 @@ class DataAnalyzer:
         rows = results.get("rows", [])
 
         if not rows:
+            # Even for empty results, provide meaningful analysis
             analysis["insights"].append("查询未返回任何数据")
-            return analysis
+            analysis["insights"].append("可能原因：1) 数据库中没有符合条件的记录 2) 查询条件过于严格")
+            # Don't return early - continue to generate full analysis and AI narrative
+            # return analysis  # Removed to allow AI narrative generation for empty results
 
         # Analyze numeric columns for statistics
         numeric_stats = DataAnalyzer._analyze_numeric_columns(columns, rows)
@@ -407,7 +410,46 @@ class AIReportService:
                         sample_data += f"  {col_name}: {value}\n"
 
         # Build a data-rich prompt for AI
-        prompt = f"""
+        # Handle empty results case
+        if not actual_rows:
+            prompt = f"""
+你是AK/云原生转型项目管理系统的数据分析专家。
+
+## 查询结果
+查询执行成功，但未返回任何数据（0条记录）。
+
+## 查询信息
+- 查询意图: {analysis['query_info']['type']}
+- 关注焦点: {', '.join(analysis['query_info']['focus'])}
+- 查询字段: {', '.join(analysis['data_summary']['columns'])}
+
+## 分析任务
+请针对**查询未返回数据**这一情况，生成专业的分析报告：
+
+### 1. 结果说明
+简要说明查询未返回数据的情况
+
+### 2. 可能原因分析
+分析为什么没有数据，可能包括：
+- 数据库中确实没有符合条件的记录（如没有延期超过30天的项目）
+- 查询条件可能过于严格
+- 数据字段命名或筛选逻辑可能需要调整
+- 项目状态可能不符合预期
+
+### 3. 建议措施
+提供3-5条具体建议：
+- 如何调整查询条件
+- 如何验证数据是否存在
+- 如何改进数据采集或录入
+- 下一步可以尝试的查询方向
+
+### 4. 积极意义
+如果查询的是问题（如延期、失败等），无数据可能是好事，请从正面角度分析
+
+请使用专业、客观的语言，提供有价值的见解。
+"""
+        else:
+            prompt = f"""
 你是AK/云原生转型项目管理系统的数据分析专家。请基于以下SQL查询的实际数据结果，生成一份专业的项目分析报告。
 
 ## 重要提示
