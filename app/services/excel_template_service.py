@@ -233,7 +233,7 @@ class AITemplateUnderstanding:
 ## 可用数据源
 我们有以下数据表:
 1. **applications** (应用转型项目表)
-   - l2_id (应用ID)
+   - l2_id (应用ID，VARCHAR，如CI000088398)
    - app_name (应用名称)
    - overall_transformation_target (转型目标: AK/云原生/AK+云原生)
    - current_status (当前状态)
@@ -261,18 +261,128 @@ class AITemplateUnderstanding:
    - department, team (部门/团队)
    - role (角色)
 
+4. **cmdb_l2_applications** (CMDB应用配置表，包含应用的基础信息)
+   - config_id (配置项ID，VARCHAR，对应applications.l2_id)
+   - short_name (应用简称)
+   - management_level (管理级别)
+   - belongs_to_156l1 (所属156L1系统)
+   - belongs_to_87l1 (所属87L1系统)
+   - business_supervisor_unit (主管单位)
+   - contact_person (联系人)
+   - dev_unit (开发单位)
+   - dev_contact (开发联系人)
+   - dev_mode (开发模式)
+   - ops_unit (运维单位)
+   - ops_contact (运维联系人)
+   - status (状态)
+   - deployment_env (部署环境)
+
+5. **cmdb_l1_systems_156** (156L1系统表)
+   - config_id (系统ID)
+   - short_name (系统名称)
+   - belongs_to_domain (所属域)
+
+6. **cmdb_l1_systems_87** (87L1系统表)
+   - config_id (系统ID)
+   - short_name (系统名称)
+   - belongs_to_domain (所属域)
+
 ## 重要：表关联规则
-如果需要联合查询applications和sub_tasks表，必须使用：
-- 正确：applications.id = sub_tasks.l2_id
-- 错误：applications.l2_id = sub_tasks.l2_id (类型不匹配！)
+
+### 1. applications ↔ sub_tasks 关联
+- ✅ 正确：`applications.id = sub_tasks.l2_id`
+- ❌ 错误：`applications.l2_id = sub_tasks.l2_id` (类型不匹配！)
 
 原因：
 - applications.id 是 INTEGER 主键
-- applications.l2_id 是 VARCHAR 业务ID(如CI123456)
+- applications.l2_id 是 VARCHAR 业务ID(如CI000088398)
 - sub_tasks.l2_id 是 INTEGER 外键，指向 applications.id
+
+### 2. applications ↔ cmdb_l2_applications 关联
+- ✅ 正确：`applications.l2_id = cmdb_l2_applications.config_id`
+- 说明：两者都是VARCHAR业务ID
+
+### 3. cmdb_l2_applications ↔ cmdb_l1_systems 关联
+- ✅ 156L1关联：`cmdb_l2_applications.belongs_to_156l1 = cmdb_l1_systems_156.config_id`
+- ✅ 87L1关联：`cmdb_l2_applications.belongs_to_87l1 = cmdb_l1_systems_87.config_id`
+
+### 4. 典型的完整关联查询示例
+```sql
+SELECT
+  a.l2_id,
+  a.app_name,
+  a.current_status,
+  c.management_level,
+  c.business_supervisor_unit,
+  c.dev_unit
+FROM applications a
+LEFT JOIN cmdb_l2_applications c ON a.l2_id = c.config_id
+LEFT JOIN sub_tasks s ON a.id = s.l2_id
+WHERE a.l2_id IS NOT NULL  -- 避免过滤掉太多数据
+LIMIT 1000
+```
+
+## 数据库类型：PostgreSQL
+**重要**：我们使用的是 **PostgreSQL 14+** 数据库，请使用PostgreSQL语法：
+- 字符串聚合：使用 `STRING_AGG(column, separator)` 而不是 `GROUP_CONCAT()`
+- 字符串拼接：使用 `||` 或 `CONCAT()`
+- 条件表达式：使用 `CASE WHEN ... THEN ... ELSE ... END` 而不是 `IF()`
+- 列名中有特殊字符（如括号）：必须用双引号括起来，如 `"L2应用中文名称(收集)"`
+
+### PostgreSQL聚合示例：
+```sql
+-- 字符串聚合（多行合并为一个字符串）
+STRING_AGG(sub_target, '; ' ORDER BY id)
+
+-- 条件字符串拼接
+STRING_AGG(
+  CASE
+    WHEN is_blocked THEN sub_target || ' (阻塞)'
+    ELSE sub_target
+  END,
+  '; '
+)
+
+-- 带条件的聚合
+STRING_AGG(
+  CASE WHEN is_blocked THEN sub_target ELSE NULL END,
+  '; '
+)
+```
 
 ## 分析任务
 请分析表头，理解每一列应该映射到哪个数据库字段。
+
+**重要提示**：
+1. 优先使用 applications LEFT JOIN cmdb_l2_applications 来获取完整数据
+2. 如果需要子任务信息，再 LEFT JOIN sub_tasks 并使用 STRING_AGG 聚合
+3. 不要添加过于严格的WHERE条件（如状态筛选），除非模板明确要求
+4. 使用LEFT JOIN而不是INNER JOIN，避免因为缺少关联数据而丢失记录
+5. 确保SQL能返回足够的数据（通常应该有几百到上千行）
+
+**关键：SQL别名规则**（非常重要！）：
+- 所有复杂表达式（CASE WHEN、STRING_AGG、计算字段）必须使用 AS 定义别名
+- column_mappings中的db_field必须引用这些别名，而不是完整表达式
+- 别名使用简单的英文名（如 ak_category, dev_unit_name）
+
+**示例**：
+```sql
+SELECT
+  a.l2_id,  -- 简单字段不需要别名
+  CASE WHEN a.overall_transformation_target ILIKE '%AK%'
+       THEN 'AK' ELSE '' END AS ak_category,  -- 复杂表达式使用AS别名
+  ROW_NUMBER() OVER (ORDER BY a.id) AS row_num  -- 窗口函数使用AS别名
+FROM applications a
+```
+
+对应的column_mappings：
+```json
+[
+  {{"excel_column": "应用ID", "db_field": "l2_id", "data_type": "string"}},
+  {{"excel_column": "AK类别", "db_field": "ak_category", "data_type": "string"}},
+  {{"excel_column": "序号", "db_field": "row_num", "data_type": "number"}}
+]
+```
 
 返回JSON格式:
 {{
@@ -280,7 +390,7 @@ class AITemplateUnderstanding:
   "column_mappings": [
     {{
       "excel_column": "表头名称",
-      "db_field": "数据库字段名",
+      "db_field": "数据库列名或AS别名（不要用完整表达式！）",
       "data_type": "string|number|date|percentage",
       "description": "字段说明"
     }}
@@ -289,7 +399,7 @@ class AITemplateUnderstanding:
     "status": "可选的筛选条件",
     "team": "可选的团队筛选"
   }},
-  "custom_sql": "如果需要复杂查询，提供完整SQL",
+  "custom_sql": "完整的PostgreSQL SQL（复杂表达式必须用AS定义别名！）",
   "reasoning": "你的分析推理过程"
 }}
 
@@ -300,6 +410,8 @@ class AITemplateUnderstanding:
 
             # Parse AI response
             import json
+            import re
+
             # Remove markdown code blocks if present
             response = response.strip()
             if response.startswith("```json"):
@@ -310,7 +422,48 @@ class AITemplateUnderstanding:
                 response = response[:-3]
             response = response.strip()
 
-            understanding = json.loads(response)
+            # Try to extract JSON from response (in case there's extra text)
+            # Look for outermost curly braces
+            json_match = re.search(r'\{[\s\S]*\}', response)
+            if json_match:
+                response = json_match.group(0)
+
+            try:
+                understanding = json.loads(response)
+            except json.JSONDecodeError as json_err:
+                logger.warning(f"Failed to parse AI JSON response: {json_err}")
+                logger.warning(f"AI Response (first 500 chars): {response[:500]}")
+
+                # Try to fix common JSON errors
+                # 1. Remove trailing commas before } or ]
+                response = re.sub(r',\s*}', '}', response)
+                response = re.sub(r',\s*]', ']', response)
+
+                # 2. Try to truncate at last valid closing brace if JSON is incomplete
+                # Find all closing braces
+                brace_count = 0
+                last_valid_pos = -1
+                for i, char in enumerate(response):
+                    if char == '{':
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            last_valid_pos = i + 1
+                            break
+
+                if last_valid_pos > 0:
+                    response = response[:last_valid_pos]
+                    logger.info(f"Truncated JSON to last valid closing brace at position {last_valid_pos}")
+
+                try:
+                    understanding = json.loads(response)
+                    logger.info("JSON parsing succeeded after cleanup")
+                except json.JSONDecodeError as second_err:
+                    # If still fails, use fallback
+                    logger.error(f"JSON parsing failed even after cleanup: {second_err}")
+                    logger.error(f"Cleaned response (first 1000 chars): {response[:1000]}")
+                    return AITemplateUnderstanding._fallback_understanding(template_info)
 
             logger.info(f"AI template understanding: {understanding.get('reasoning', '')}")
             return understanding
@@ -366,12 +519,48 @@ class AITemplateUnderstanding:
 
             column_mappings.append(mapping)
 
+        # Generate a simple integrated query (applications + CMDB)
+        # to ensure we get comprehensive data even in fallback mode
+        custom_sql = """
+        SELECT
+          a.l2_id,
+          a.app_name,
+          a.overall_transformation_target,
+          a.current_status,
+          a.dev_team,
+          a.dev_owner,
+          a.ops_team,
+          a.ops_owner,
+          a.planned_biz_online_date,
+          a.actual_biz_online_date,
+          a.delay_days,
+          a.is_delayed,
+          a.created_at,
+          a.updated_at,
+          c.management_level,
+          c.belongs_to_156l1,
+          c.belongs_to_87l1,
+          c.business_supervisor_unit,
+          c.contact_person,
+          c.dev_unit,
+          c.dev_contact,
+          c.dev_mode,
+          c.ops_unit AS cmdb_ops_unit,
+          c.ops_contact,
+          c.status AS cmdb_status
+        FROM applications a
+        LEFT JOIN cmdb_l2_applications c ON a.l2_id = c.config_id
+        WHERE a.l2_id IS NOT NULL
+        ORDER BY a.id
+        LIMIT 1000
+        """
+
         return {
-            "data_source": "applications",
+            "data_source": "custom_query",
             "column_mappings": column_mappings,
             "filters": {},
-            "custom_sql": None,
-            "reasoning": "基于规则的列名匹配（applications表字段）"
+            "custom_sql": custom_sql,
+            "reasoning": "基于规则的列名匹配（applications + CMDB集成查询）"
         }
 
 
@@ -449,10 +638,13 @@ class ExcelTemplateFillerService:
         try:
             if custom_sql:
                 # Execute custom SQL query
+                logger.info(f"Executing custom SQL query:\n{custom_sql}")
                 result = await db.execute(text(custom_sql))
                 rows = result.fetchall()
                 columns = result.keys()
-                return [dict(zip(columns, row)) for row in rows]
+                data = [dict(zip(columns, row)) for row in rows]
+                logger.info(f"Custom SQL returned {len(data)} rows")
+                return data
 
             elif data_source == "applications":
                 # Query applications table
@@ -573,16 +765,45 @@ class ExcelTemplateFillerService:
 
                 # Write to cell
                 cell = ws.cell(row=row_idx, column=col_index)
+
+                # Skip merged cells (they are read-only)
+                # Only write to the top-left cell of a merged range
+                from openpyxl.cell.cell import MergedCell
+                if isinstance(cell, MergedCell):
+                    # Skip writing to merged cell slaves
+                    continue
+
                 cell.value = formatted_value
 
                 # Preserve or apply formatting
                 # Copy formatting from header row if available
                 if data_start_row > 1:
-                    header_cell = ws.cell(row=data_start_row - 1, column=col_index)
-                    if header_cell.border:
-                        cell.border = header_cell.border
-                    if header_cell.alignment:
-                        cell.alignment = header_cell.alignment
+                    try:
+                        header_cell = ws.cell(row=data_start_row - 1, column=col_index)
+
+                        # Create new style objects instead of copying references
+                        # This avoids StyleProxy hashable errors
+                        from openpyxl.styles import Border, Side, Alignment
+
+                        if header_cell.border and header_cell.border.left:
+                            # Create a new border with the same style
+                            cell.border = Border(
+                                left=Side(style=header_cell.border.left.style, color=header_cell.border.left.color) if header_cell.border.left else None,
+                                right=Side(style=header_cell.border.right.style, color=header_cell.border.right.color) if header_cell.border.right else None,
+                                top=Side(style=header_cell.border.top.style, color=header_cell.border.top.color) if header_cell.border.top else None,
+                                bottom=Side(style=header_cell.border.bottom.style, color=header_cell.border.bottom.color) if header_cell.border.bottom else None
+                            )
+
+                        if header_cell.alignment:
+                            # Create a new alignment object
+                            cell.alignment = Alignment(
+                                horizontal=header_cell.alignment.horizontal,
+                                vertical=header_cell.alignment.vertical,
+                                wrap_text=header_cell.alignment.wrap_text
+                            )
+                    except Exception as style_err:
+                        # If style copying fails, just skip it
+                        logger.debug(f"Failed to copy cell style: {style_err}")
 
         # Save to bytes
         output = io.BytesIO()

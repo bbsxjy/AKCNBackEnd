@@ -24,6 +24,18 @@ from app.schemas.application import ApplicationCreate, ApplicationUpdate, Applic
 from app.schemas.subtask import SubTaskCreate, SubTaskUpdate, SubTaskBulkUpdate
 from app.schemas.excel import ExcelImportRequest, ExcelExportRequest
 from app.models.user import User
+from app.mcp.response_utils import (
+    application_list_response,
+    application_detail_response,
+    subtask_list_response,
+    cmdb_l2_list_response,
+    cmdb_l1_list_response,
+    integrated_data_response,
+    create_success_response,
+    create_error_response,
+    create_statistics_response,
+    create_sql_result_response
+)
 
 logger = logging.getLogger(__name__)
 
@@ -62,48 +74,52 @@ async def handle_database_query(tool_name: str, arguments: Optional[Dict[str, An
                 # Execute read-only SQL query
                 query = arguments.get("query", "")
                 params = arguments.get("params", {})
-                
+
                 # Ensure query is read-only
                 query_lower = query.lower().strip()
                 if any(keyword in query_lower for keyword in ["insert", "update", "delete", "drop", "create", "alter"]):
-                    return {"error": "Only SELECT queries are allowed"}
-                
+                    return create_error_response("Only SELECT queries are allowed")
+
                 result = await db.execute(text(query), params)
                 rows = result.fetchall()
-                
+
                 # Convert rows to dict
                 columns = result.keys()
                 data = [dict(zip(columns, row)) for row in rows]
-                
-                return {
-                    "success": True,
-                    "count": len(data),
-                    "data": data
-                }
-            
+
+                return create_sql_result_response(
+                    columns=list(columns),
+                    rows=[list(row) for row in rows]
+                )
+
             elif tool_name == "db_get_schema":
                 # Get database schema information
                 table_name = arguments.get("table_name")
-                
+
                 if table_name:
                     # Get specific table schema
                     inspector = inspect(db.bind)
                     columns = inspector.get_columns(table_name)
                     indexes = inspector.get_indexes(table_name)
                     foreign_keys = inspector.get_foreign_keys(table_name)
-                    
-                    return {
-                        "success": True,
-                        "table": table_name,
-                        "columns": columns,
-                        "indexes": indexes,
-                        "foreign_keys": foreign_keys
-                    }
+
+                    return create_success_response(
+                        data={
+                            "table": table_name,
+                            "columns": columns,
+                            "indexes": indexes,
+                            "foreign_keys": foreign_keys
+                        },
+                        metadata={
+                            "renderType": "schema_detail",
+                            "title": f"表结构: {table_name}"
+                        }
+                    )
                 else:
                     # Get all tables
                     inspector = inspect(db.bind)
                     tables = inspector.get_table_names()
-                    
+
                     schema_info = {}
                     for table in tables:
                         columns = inspector.get_columns(table)
@@ -111,18 +127,23 @@ async def handle_database_query(tool_name: str, arguments: Optional[Dict[str, An
                             "columns": [col["name"] for col in columns],
                             "column_count": len(columns)
                         }
-                    
-                    return {
-                        "success": True,
-                        "tables": tables,
-                        "schema": schema_info
-                    }
-            
-            return {"error": f"Unknown database tool: {tool_name}"}
-            
+
+                    return create_success_response(
+                        data={
+                            "tables": tables,
+                            "schema": schema_info
+                        },
+                        metadata={
+                            "renderType": "schema_list",
+                            "title": f"数据库架构 ({len(tables)}个表)"
+                        }
+                    )
+
+            return create_error_response(f"Unknown database tool: {tool_name}")
+
     except Exception as e:
         logger.error(f"Database query error: {e}")
-        return {"error": str(e)}
+        return create_error_response(str(e))
 
 
 async def handle_application_operation(tool_name: str, arguments: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -153,19 +174,15 @@ async def handle_application_operation(tool_name: str, arguments: Optional[Dict[
                     filters=filters
                 )
 
-                return {
-                    "success": True,
-                    "count": len(apps),
-                    "total": total,
-                    "data": apps
-                }
+                # Use standardized response with metadata
+                return application_list_response(apps, total=total)
             
             elif tool_name == "app_get":
                 # Get application details by L2 ID only
                 l2_id = arguments.get("l2_id")
 
                 if not l2_id:
-                    return {"error": "l2_id is required"}
+                    return create_error_response("l2_id is required")
 
                 # Create service instance and query by L2 ID
                 # Use include_stats=True to get a dict directly
@@ -186,42 +203,45 @@ async def handle_application_operation(tool_name: str, arguments: Optional[Dict[
                                 value = value.isoformat() if value else None
                             app_data[column.name] = value
 
-                    return {
-                        "success": True,
-                        "data": app_data
-                    }
+                    return application_detail_response(app_data)
 
-                return {"error": f"Application not found with L2 ID: {l2_id}"}
+                return create_error_response(f"Application not found with L2 ID: {l2_id}")
             
             elif tool_name == "app_create":
                 # Create new application
                 app_data = ApplicationCreate(**arguments)
                 app = await ApplicationService.create_application(db, app_data, user)
-                
-                return {
-                    "success": True,
-                    "data": app.dict(),
-                    "message": f"Application {app.l2_id} created successfully"
-                }
-            
+
+                return create_success_response(
+                    data=app.dict(),
+                    metadata={
+                        "renderType": "application_detail",
+                        "title": f"{app.l2_id} - 新建应用"
+                    },
+                    message=f"Application {app.l2_id} created successfully"
+                )
+
             elif tool_name == "app_update":
                 # Update application
                 app_id = UUID(arguments["app_id"])
                 update_data = ApplicationUpdate(**arguments["update_data"])
-                
+
                 app = await ApplicationService.update_application(db, app_id, update_data, user)
-                
-                return {
-                    "success": True,
-                    "data": app.dict(),
-                    "message": f"Application {app.l2_id} updated successfully"
-                }
+
+                return create_success_response(
+                    data=app.dict(),
+                    metadata={
+                        "renderType": "application_detail",
+                        "title": f"{app.l2_id} - 更新应用"
+                    },
+                    message=f"Application {app.l2_id} updated successfully"
+                )
             
-            return {"error": f"Unknown application tool: {tool_name}"}
-            
+            return create_error_response(f"Unknown application tool: {tool_name}")
+
     except Exception as e:
         logger.error(f"Application operation error: {e}")
-        return {"error": str(e)}
+        return create_error_response(str(e))
 
 
 async def handle_subtask_operation(tool_name: str, arguments: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -235,54 +255,57 @@ async def handle_subtask_operation(tool_name: str, arguments: Optional[Dict[str,
                 application_id = arguments.get("application_id")
                 status = arguments.get("status")
                 assigned_to = arguments.get("assigned_to")
-                
+
                 if application_id:
                     tasks = await SubTaskService.get_by_application(db, UUID(application_id))
                 else:
                     tasks = await SubTaskService.list_subtasks(
                         db, status=status, assigned_to=assigned_to
                     )
-                
-                return {
-                    "success": True,
-                    "count": len(tasks),
-                    "data": [task.dict() for task in tasks]
-                }
-            
+
+                return subtask_list_response([task.dict() for task in tasks])
+
             elif tool_name == "task_create":
                 # Create new subtask
                 task_data = SubTaskCreate(**arguments)
                 task = await SubTaskService.create_subtask(db, task_data, user)
-                
-                return {
-                    "success": True,
-                    "data": task.dict(),
-                    "message": f"Subtask {task.module_name} created successfully"
-                }
-            
+
+                return create_success_response(
+                    data=task.dict(),
+                    metadata={
+                        "renderType": "subtask_detail",
+                        "title": f"{task.module_name} - 新建子任务"
+                    },
+                    message=f"Subtask {task.module_name} created successfully"
+                )
+
             elif tool_name == "task_batch_update":
                 # Batch update subtasks
                 task_ids = [UUID(id) for id in arguments["task_ids"]]
                 update_data = SubTaskUpdate(**arguments["update_data"])
-                
+
                 batch_update = SubTaskBulkUpdate(
                     task_ids=task_ids,
                     update_data=update_data
                 )
-                
+
                 updated = await SubTaskService.batch_update(db, batch_update, user)
-                
-                return {
-                    "success": True,
-                    "updated_count": updated,
-                    "message": f"Updated {updated} subtasks successfully"
-                }
-            
-            return {"error": f"Unknown subtask tool: {tool_name}"}
-            
+
+                return create_success_response(
+                    data={"updated_count": updated},
+                    metadata={
+                        "renderType": "operation_result",
+                        "title": "批量更新结果"
+                    },
+                    updated_count=updated,
+                    message=f"Updated {updated} subtasks successfully"
+                )
+
+            return create_error_response(f"Unknown subtask tool: {tool_name}")
+
     except Exception as e:
         logger.error(f"Subtask operation error: {e}")
-        return {"error": str(e)}
+        return create_error_response(str(e))
 
 
 async def handle_excel_operation(tool_name: str, arguments: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -356,12 +379,12 @@ async def handle_calculation_service(tool_name: str, arguments: Optional[Dict[st
     """Handle calculation service operations."""
     try:
         async with get_db_context()() as db:
-            
+
             if tool_name == "calc_progress":
                 # Calculate progress
                 application_ids = arguments.get("application_ids")
                 recalculate_all = arguments.get("recalculate_all", False)
-                
+
                 if recalculate_all:
                     result = await CalculationService.recalculate_all_progress(db)
                 elif application_ids:
@@ -370,37 +393,43 @@ async def handle_calculation_service(tool_name: str, arguments: Optional[Dict[st
                         db, app_ids
                     )
                 else:
-                    return {"error": "Either application_ids or recalculate_all required"}
-                
-                return {
-                    "success": True,
-                    "updated_count": result["updated"],
-                    "message": f"Recalculated progress for {result['updated']} applications"
-                }
-            
+                    return create_error_response("Either application_ids or recalculate_all required")
+
+                return create_success_response(
+                    data={"updated_count": result["updated"]},
+                    metadata={
+                        "renderType": "operation_result",
+                        "title": "进度重新计算结果"
+                    },
+                    updated_count=result["updated"],
+                    message=f"Recalculated progress for {result['updated']} applications"
+                )
+
             elif tool_name == "calc_delays":
                 # Calculate delays
                 include_details = arguments.get("include_details", True)
-                
+
                 result = await CalculationService.analyze_delays(db)
-                
-                response = {
-                    "success": True,
+
+                response_data = {
                     "total_delayed": result["total_delayed"],
                     "average_delay_days": result["average_delay_days"],
                     "max_delay_days": result["max_delay_days"]
                 }
-                
+
                 if include_details:
-                    response["delayed_applications"] = result["delayed_applications"]
-                
-                return response
-            
-            return {"error": f"Unknown calculation tool: {tool_name}"}
-            
+                    response_data["delayed_applications"] = result["delayed_applications"]
+
+                return create_statistics_response(
+                    stats=response_data,
+                    title=f"延期分析结果 (共{result['total_delayed']}个)"
+                )
+
+            return create_error_response(f"Unknown calculation tool: {tool_name}")
+
     except Exception as e:
         logger.error(f"Calculation service error: {e}")
-        return {"error": str(e)}
+        return create_error_response(str(e))
 
 
 async def handle_audit_operation(tool_name: str, arguments: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -408,14 +437,14 @@ async def handle_audit_operation(tool_name: str, arguments: Optional[Dict[str, A
     try:
         async with get_db_context()() as db:
             user = await get_mock_user()
-            
+
             if tool_name == "audit_get_logs":
                 # Get audit logs
                 table_name = arguments.get("table_name")
                 record_id = arguments.get("record_id")
                 user_id = arguments.get("user_id")
                 limit = arguments.get("limit", 100)
-                
+
                 logs = await AuditService.get_audit_logs(
                     db,
                     table_name=table_name,
@@ -423,11 +452,9 @@ async def handle_audit_operation(tool_name: str, arguments: Optional[Dict[str, A
                     user_id=UUID(user_id) if user_id else None,
                     limit=limit
                 )
-                
-                return {
-                    "success": True,
-                    "count": len(logs),
-                    "data": [
+
+                return create_success_response(
+                    data=[
                         {
                             "id": str(log.id),
                             "table_name": log.table_name,
@@ -439,26 +466,36 @@ async def handle_audit_operation(tool_name: str, arguments: Optional[Dict[str, A
                             "created_at": log.created_at.isoformat()
                         }
                         for log in logs
-                    ]
-                }
-            
+                    ],
+                    metadata={
+                        "renderType": "audit_log_list",
+                        "title": f"审计日志 ({len(logs)}条)",
+                        "count": len(logs)
+                    },
+                    count=len(logs)
+                )
+
             elif tool_name == "audit_rollback":
                 # Rollback change
                 audit_log_id = UUID(arguments["audit_log_id"])
-                
+
                 result = await AuditService.rollback_change(db, audit_log_id, user)
-                
-                return {
-                    "success": True,
-                    "message": "Change rolled back successfully",
-                    "rollback_details": result
-                }
-            
-            return {"error": f"Unknown audit tool: {tool_name}"}
-            
+
+                return create_success_response(
+                    data=result,
+                    metadata={
+                        "renderType": "operation_result",
+                        "title": "变更回滚结果"
+                    },
+                    message="Change rolled back successfully",
+                    rollback_details=result
+                )
+
+            return create_error_response(f"Unknown audit tool: {tool_name}")
+
     except Exception as e:
         logger.error(f"Audit operation error: {e}")
-        return {"error": str(e)}
+        return create_error_response(str(e))
 
 
 async def handle_dashboard_stats(tool_name: str, arguments: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -472,24 +509,28 @@ async def handle_dashboard_stats(tool_name: str, arguments: Optional[Dict[str, A
 
                 if stat_type == "summary":
                     stats = await dashboard_service.get_summary_stats(db)
+                    return create_statistics_response(stats, title="转型项目汇总统计")
                 elif stat_type == "progress_trend":
                     stats = await dashboard_service.get_progress_trend(
                         db,
                         start_date=date_range.get("start_date") if date_range else None,
                         end_date=date_range.get("end_date") if date_range else None
                     )
+                    return create_success_response(
+                        data=stats,
+                        metadata={
+                            "renderType": "progress_trend",
+                            "title": "进度趋势分析"
+                        }
+                    )
                 elif stat_type == "department":
                     stats = await dashboard_service.get_department_distribution(db)
+                    return create_statistics_response(stats, title="部门分布统计")
                 elif stat_type == "delayed":
                     stats = await dashboard_service.get_delayed_summary(db)
+                    return create_statistics_response(stats, title="延期项目统计")
                 else:
-                    return {"error": f"Unknown stat type: {stat_type}"}
-
-                return {
-                    "success": True,
-                    "stat_type": stat_type,
-                    "data": stats
-                }
+                    return create_error_response(f"Unknown stat type: {stat_type}")
 
             elif tool_name == "dashboard_export":
                 format_type = arguments["format"]
@@ -504,22 +545,22 @@ async def handle_dashboard_stats(tool_name: str, arguments: Optional[Dict[str, A
                 }
 
                 if format_type == "json":
-                    return {
-                        "success": True,
-                        "data": json.dumps(data, default=json_serializer, indent=2)
-                    }
+                    return create_success_response(
+                        data=json.dumps(data, default=json_serializer, indent=2),
+                        metadata={
+                            "renderType": "json_export",
+                            "title": "仪表盘数据导出（JSON格式）"
+                        }
+                    )
                 elif format_type in ["csv", "excel"]:
                     # Note: export_to_file method needs to be implemented in dashboard_service
-                    return {
-                        "success": False,
-                        "error": "File export not yet implemented. Please use JSON format."
-                    }
+                    return create_error_response("File export not yet implemented. Please use JSON format.")
 
-            return {"error": f"Unknown dashboard tool: {tool_name}"}
+            return create_error_response(f"Unknown dashboard tool: {tool_name}")
 
     except Exception as e:
         logger.error(f"Dashboard operation error: {e}")
-        return {"error": str(e)}
+        return create_error_response(str(e))
 
 
 async def handle_cmdb_operation(tool_name: str, arguments: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -544,27 +585,23 @@ async def handle_cmdb_operation(tool_name: str, arguments: Optional[Dict[str, An
                     limit=limit
                 )
 
-                return {
-                    "success": True,
-                    "count": len(apps),
-                    "data": [
-                        {
-                            "config_id": app.config_id,
-                            "short_name": app.short_name,
-                            "status": app.status,
-                            "management_level": app.management_level,
-                            "business_supervisor_unit": app.business_supervisor_unit,
-                            "contact_person": app.contact_person,
-                            "dev_unit": app.dev_unit,
-                            "dev_contact": app.dev_contact,
-                            "ops_unit": app.ops_unit,
-                            "ops_contact": app.ops_contact,
-                            "belongs_to_156l1": app.belongs_to_156l1,
-                            "belongs_to_87l1": app.belongs_to_87l1,
-                        }
-                        for app in apps
-                    ]
-                }
+                return cmdb_l2_list_response([
+                    {
+                        "config_id": app.config_id,
+                        "short_name": app.short_name,
+                        "status": app.status,
+                        "management_level": app.management_level,
+                        "business_supervisor_unit": app.business_supervisor_unit,
+                        "contact_person": app.contact_person,
+                        "dev_unit": app.dev_unit,
+                        "dev_contact": app.dev_contact,
+                        "ops_unit": app.ops_unit,
+                        "ops_contact": app.ops_contact,
+                        "belongs_to_156l1": app.belongs_to_156l1,
+                        "belongs_to_87l1": app.belongs_to_87l1,
+                    }
+                    for app in apps
+                ])
 
             elif tool_name == "cmdb_get_l2_with_l1":
                 # Get L2 application with L1 system information (需求场景3)
@@ -587,24 +624,20 @@ async def handle_cmdb_operation(tool_name: str, arguments: Optional[Dict[str, An
                     db, keyword=keyword, domain=domain, layer=layer, limit=limit
                 )
 
-                return {
-                    "success": True,
-                    "count": len(systems),
-                    "data": [
-                        {
-                            "config_id": sys.config_id,
-                            "short_name": sys.short_name,
-                            "management_level": sys.management_level,
-                            "belongs_to_domain": sys.belongs_to_domain,
-                            "belongs_to_layer": sys.belongs_to_layer,
-                            "system_function": sys.system_function,
-                            "dev_unit": sys.dev_unit,
-                            "status": sys.status,
-                            "xinchuang_acceptance_year": sys.xinchuang_acceptance_year
-                        }
-                        for sys in systems
-                    ]
-                }
+                return cmdb_l1_list_response([
+                    {
+                        "config_id": sys.config_id,
+                        "short_name": sys.short_name,
+                        "management_level": sys.management_level,
+                        "belongs_to_domain": sys.belongs_to_domain,
+                        "belongs_to_layer": sys.belongs_to_layer,
+                        "system_function": sys.system_function,
+                        "dev_unit": sys.dev_unit,
+                        "status": sys.status,
+                        "xinchuang_acceptance_year": sys.xinchuang_acceptance_year
+                    }
+                    for sys in systems
+                ], l1_type="156L1")
 
             elif tool_name == "cmdb_search_87l1":
                 # Search 87L1 systems
@@ -619,36 +652,32 @@ async def handle_cmdb_operation(tool_name: str, arguments: Optional[Dict[str, An
                     is_critical=is_critical, limit=limit
                 )
 
-                return {
-                    "success": True,
-                    "count": len(systems),
-                    "data": [
-                        {
-                            "config_id": sys.config_id,
-                            "short_name": sys.short_name,
-                            "description": sys.description,
-                            "management_level": sys.management_level,
-                            "belongs_to_domain": sys.belongs_to_domain,
-                            "belongs_to_layer": sys.belongs_to_layer,
-                            "is_critical_system": sys.is_critical_system,
-                            "peak_tps": sys.peak_tps,
-                            "daily_business_volume": sys.daily_business_volume,
-                            "function_positioning": sys.function_positioning,
-                            "dev_unit": sys.dev_unit,
-                            "ops_unit": sys.ops_unit,
-                            "status": sys.status
-                        }
-                        for sys in systems
-                    ]
-                }
+                return cmdb_l1_list_response([
+                    {
+                        "config_id": sys.config_id,
+                        "short_name": sys.short_name,
+                        "description": sys.description,
+                        "management_level": sys.management_level,
+                        "belongs_to_domain": sys.belongs_to_domain,
+                        "belongs_to_layer": sys.belongs_to_layer,
+                        "is_critical_system": sys.is_critical_system,
+                        "peak_tps": sys.peak_tps,
+                        "daily_business_volume": sys.daily_business_volume,
+                        "function_positioning": sys.function_positioning,
+                        "dev_unit": sys.dev_unit,
+                        "ops_unit": sys.ops_unit,
+                        "status": sys.status
+                    }
+                    for sys in systems
+                ], l1_type="87L1")
 
             elif tool_name == "cmdb_get_stats":
                 # Get CMDB statistics
                 stats = await CMDBQueryService.get_statistics(db)
-                return {
-                    "success": True,
-                    "statistics": stats
-                }
+                return create_statistics_response(
+                    stats=stats,
+                    title="CMDB系统目录统计"
+                )
 
             elif tool_name == "cmdb_import":
                 # Import CMDB data from Excel
@@ -656,16 +685,20 @@ async def handle_cmdb_operation(tool_name: str, arguments: Optional[Dict[str, An
                 replace_existing = arguments.get("replace_existing", False)
 
                 if not file_path:
-                    return {"error": "file_path is required"}
+                    return create_error_response("file_path is required")
 
                 result = await CMDBImportService.import_from_excel(
                     db, file_path, replace_existing
                 )
 
-                return {
-                    "success": True,
-                    "import_stats": result
-                }
+                return create_success_response(
+                    data=result,
+                    metadata={
+                        "renderType": "import_result",
+                        "title": "CMDB数据导入结果"
+                    },
+                    import_stats=result
+                )
 
             elif tool_name == "cmdb_get_l2_by_l1":
                 # Get L2 applications by L1 system
@@ -673,34 +706,62 @@ async def handle_cmdb_operation(tool_name: str, arguments: Optional[Dict[str, An
                 l1_type = arguments.get("l1_type", "156")
 
                 if not l1_system_name:
-                    return {"error": "l1_system_name is required"}
+                    return create_error_response("l1_system_name is required")
 
                 apps = await CMDBQueryService.get_l2_applications_by_l1_system(
                     db, l1_system_name, l1_type
                 )
 
-                return {
-                    "success": True,
-                    "l1_system_name": l1_system_name,
-                    "l1_type": l1_type,
-                    "count": len(apps),
-                    "applications": [
-                        {
-                            "config_id": app.config_id,
-                            "short_name": app.short_name,
-                            "management_level": app.management_level,
-                            "status": app.status,
-                            "contact_person": app.contact_person
-                        }
-                        for app in apps
-                    ]
-                }
+                return create_success_response(
+                    data={
+                        "l1_system_name": l1_system_name,
+                        "l1_type": l1_type,
+                        "applications": [
+                            {
+                                "config_id": app.config_id,
+                                "short_name": app.short_name,
+                                "management_level": app.management_level,
+                                "status": app.status,
+                                "contact_person": app.contact_person
+                            }
+                            for app in apps
+                        ]
+                    },
+                    metadata={
+                        "renderType": "cmdb_l1_to_l2_mapping",
+                        "title": f"{l1_system_name} 关联的L2应用 ({len(apps)}个)",
+                        "count": len(apps)
+                    },
+                    count=len(apps)
+                )
 
-            return {"error": f"Unknown CMDB tool: {tool_name}"}
+            elif tool_name == "get_integrated_data":
+                # 获取应用的完整关联数据（CMDB + 转型项目 + 子任务）
+                l2_id = arguments.get("l2_id")
+                include_subtasks = arguments.get("include_subtasks", True)
+
+                if not l2_id:
+                    return create_error_response("l2_id参数是必需的")
+
+                logger.info(f"Getting integrated data for L2 ID: {l2_id}")
+
+                integrated_data = await CMDBQueryService.get_integrated_application_data(
+                    db, l2_id
+                )
+
+                # 如果不需要子任务详情，清空子任务列表
+                if not include_subtasks:
+                    integrated_data["subtasks"] = []
+                    integrated_data["relationships"]["has_subtasks"] = False
+                    integrated_data["relationships"]["subtask_count"] = 0
+
+                return integrated_data_response(integrated_data)
+
+            return create_error_response(f"Unknown CMDB tool: {tool_name}")
 
     except Exception as e:
         logger.error(f"CMDB operation error: {e}")
-        return {"error": str(e)}
+        return create_error_response(str(e))
 
 
 async def handle_excel_advanced_operation(tool_name: str, arguments: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -742,15 +803,20 @@ async def handle_excel_advanced_operation(tool_name: str, arguments: Optional[Di
                 temp_file.write(excel_bytes)
                 temp_file.close()
 
+                file_name = os.path.basename(temp_file.name)
                 logger.info(f"Excel report created: {temp_file.name}, size={len(excel_bytes)} bytes")
 
+                # 使用标准化响应格式，添加下载URL
                 return {
                     "success": True,
-                    "file_path": temp_file.name,
-                    "file_name": os.path.basename(temp_file.name),
-                    "file_size": len(excel_bytes),
-                    "report_type": report_type,
-                    "message": f"{report_type}报表生成成功"
+                    "data": {
+                        "file_path": temp_file.name,
+                        "file_name": file_name,
+                        "download_url": f"/api/v1/mcp/excel/download/{file_name}",
+                        "file_size": len(excel_bytes),
+                        "report_type": report_type,
+                        "message": f"{report_type}报表生成成功，请点击下载链接获取文件"
+                    }
                 }
 
             elif tool_name == "excel_generate_from_query":
@@ -772,16 +838,21 @@ async def handle_excel_advanced_operation(tool_name: str, arguments: Optional[Di
                     temp_file.write(result["excel_bytes"])
                     temp_file.close()
 
+                    file_name = os.path.basename(temp_file.name)
                     logger.info(f"AI-generated Excel report created: {temp_file.name}")
 
+                    # 使用标准化响应格式，添加下载URL
                     return {
                         "success": True,
-                        "file_path": temp_file.name,
-                        "file_name": os.path.basename(temp_file.name),
-                        "file_size": len(result["excel_bytes"]),
-                        "report_type": result.get("report_type"),
-                        "query_interpreted": result.get("query_interpreted"),
-                        "message": "AI报表生成成功"
+                        "data": {
+                            "file_path": temp_file.name,
+                            "file_name": file_name,
+                            "download_url": f"/api/v1/mcp/excel/download/{file_name}",
+                            "file_size": len(result["excel_bytes"]),
+                            "report_type": result.get("report_type"),
+                            "query_interpreted": result.get("query_interpreted"),
+                            "message": "AI报表生成成功，请点击下载链接获取文件"
+                        }
                     }
                 else:
                     return {

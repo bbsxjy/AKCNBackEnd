@@ -616,6 +616,12 @@ async def fill_excel_template(
         )
 
         # Return file with metadata in headers
+        # Encode Chinese text in headers to avoid latin-1 encoding errors
+        from urllib.parse import quote
+
+        template_title = metadata.get('template_title', '')
+        ai_reasoning = metadata.get('ai_reasoning', '')[:200]  # Limit header size
+
         return Response(
             content=filled_bytes,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -624,8 +630,8 @@ async def fill_excel_template(
                 "X-Rows-Filled": str(metadata['rows_filled']),
                 "X-Data-Source": metadata['data_source'],
                 "X-Processing-Time-Ms": str(processing_time),
-                "X-Template-Title": metadata.get('template_title', ''),
-                "X-AI-Reasoning": metadata.get('ai_reasoning', '')[:200]  # Limit header size
+                "X-Template-Title": quote(template_title, safe='') if template_title else '',
+                "X-AI-Reasoning": quote(ai_reasoning, safe='') if ai_reasoning else ''
             }
         )
 

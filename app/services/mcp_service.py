@@ -172,6 +172,24 @@ class MCPService:
                     "required": False
                 }
             }
+        },
+        {
+            "name": "get_integrated_data",
+            "description": "获取应用的完整关联数据（CMDB静态信息 + 转型项目动态信息 + 子任务列表）。当查询涉及子任务或需要完整信息时使用此工具。",
+            "category": "data_integration",
+            "requiresEdit": False,
+            "parameters": {
+                "l2_id": {
+                    "type": "string",
+                    "description": "L2业务ID/配置项ID（如CI000088398）",
+                    "required": True
+                },
+                "include_subtasks": {
+                    "type": "boolean",
+                    "description": "是否包含子任务详情（默认true）",
+                    "required": False
+                }
+            }
         }
     ]
 
@@ -863,11 +881,38 @@ class MCPService:
         # Get detailed schema for key tables to improve SQL accuracy
         schema_details = await MCPService._get_detailed_schema_for_ai()
 
+        # Load CMDB FAQ for common questions
+        cmdb_faq = """
+CMDB系统常见问答（优先使用FAQ回答，无需查询数据库）：
+
+1. 156L1与87L1的区别：156L1是当前使用的L1系统，也是对外报送的系统；87L1是规划的目标态系统，预计到27年底156L1系统会过渡到87L1系统。
+
+2. L2与L1的归属：通常来说根据应用架构梳理特定的L2应用会唯一关联至156L1系统，其他L2应用则关联至虚拟的L1集合，如代建应用集、国际应用集等。
+
+3. 接口人调整流程：
+   - 仅涉及部门内人员调整：请邮件发送给技术部祁凌涛并抄送新接口人
+   - 涉及跨部门人员调整：通过"办公流程——系统备案及域名申请"提交信息变更
+
+4. 全量表获取：请联系技术部祁凌涛获取
+
+5. 已下线系统查询：已下线的应用不在OA上的系统及应用目录展示，仅保留在后台数据库中，可直接询问智能助手或联系技术部祁凌涛获取清单
+
+6. 管理级别关系：L1系统的管理级别取自其关联的L2应用的最高管理级别。L2应用的管理级别根据《中国银联系统及应用分类分级管理办法》评定
+
+7. 管理级别用处：L2应用的管理级别使用在了灾备建设、变更管理、系统安全事件、信息科技外包、网络安全等级保护等方面
+
+8. L2与系统关系调整：需要通过"办公流程——系统备案及域名申请"提交信息变更，说明理由，进行跨部门评审
+
+注意：如果用户问题属于FAQ范围，直接基于FAQ回答，无需调用工具查询数据库。
+"""
+
         # 构建简化的 prompt，避免 Jinja2 模板解析冲突
         # 关键：避免使用括号、斜杠、嵌套结构等可能触发 Jinja2 的符号
         prompt = f"""你是AK云原生转型项目管理系统的AI助手。请分析用户查询并返回JSON。
 
 用户查询：{query}
+
+{cmdb_faq}
 
 数据库表结构：
 {schema_details}
@@ -880,20 +925,121 @@ class MCPService:
 5. excel_create_report - 创建专业Excel报表，参数report_type可选值为progress/delayed/department/summary
 6. excel_generate_from_query - 根据自然语言生成Excel报表，参数query为用户需求描述
 7. excel_fill_template - AI填充Excel模板，当用户上传Excel文件或提到填充模板时使用，参数template_description为模板说明和context为数据筛选条件
-8. not_relevant - 拒绝非业务查询，返回友好提示
+8. cmdb_search_l2 - 搜索CMDB系统目录中的L2应用，参数包括keyword关键词、status状态、management_level管理级别、belongs_to_156l1所属156L1系统、belongs_to_87l1所属87L1系统、limit限制数量
+9. cmdb_get_l2_with_l1 - 获取L2应用及其关联的L1系统详细信息，必需参数keyword为应用名称关键词
+10. cmdb_search_156l1 - 搜索156L1系统当前L1分类，参数包括keyword关键词、domain域、layer层、limit限制数量
+11. cmdb_search_87l1 - 搜索87L1系统未来L1分类，参数包括keyword关键词、domain域、layer层、is_critical是否关键系统、limit限制数量
+12. cmdb_get_stats - 获取CMDB系统目录统计信息，无需参数
+13. cmdb_get_l2_by_l1 - 根据L1系统名称获取关联的L2应用列表，必需参数l1_system_name为L1系统名称，可选参数l1_type为156或87默认156
+14. get_integrated_data - ！！！重要！！！当查询涉及子任务或需要完整信息时必须使用此工具！获取应用的完整关联数据，通过l2_id串联CMDB静态信息、转型项目动态信息和子任务列表，必需参数l2_id为配置项ID如CI000088398，可选参数include_subtasks为是否包含子任务默认true。适用场景：用户询问"子任务"、"完整情况"、"详细信息"等
+15. not_relevant - 拒绝非业务查询，返回友好提示
+
+重要的数据关联关系说明：
+！！！系统中存在三个关联的数据源，通过l2_id串联！！！
+
+关联链条：CMDB（静态配置） → Applications（转型项目） → SubTasks（子任务）
+
+1. CMDB系统目录（静态信息，从外部系统同步）
+   - cmdb_l2_applications表：存储应用的静态配置信息
+   - 主要字段：config_id（如CI000088398）、short_name、management_level、dev_unit等
+
+2. 转型项目管理（动态信息，平台录入和管理）
+   - applications表：存储应用的转型项目进度和动态信息
+   - 主要字段：id（主键INTEGER）、l2_id（业务ID VARCHAR，如CI000088398）、current_status、is_delayed等
+
+3. 子任务（细粒度任务跟踪）
+   - sub_tasks表：存储具体的子任务详情
+   - 主要字段：id（主键INTEGER）、l2_id（外键INTEGER，指向applications.id，不是applications.l2_id！）
+
+关联关系图：
+cmdb_l2_applications.config_id（VARCHAR如CI000088398）
+    ↓ 通过l2_id匹配
+applications.l2_id（VARCHAR如CI000088398）
+    ↓ 通过主键id关联
+sub_tasks.l2_id（INTEGER外键 → applications.id主键）
+
+数据同步流程：
+CMDB中的静态配置信息（开发单位、接口人等） → 通过平台同步 → applications表中的对应字段
+用户在平台中维护转型项目的动态进度（转型阶段、是否延期等）
+子任务通过外键关联到具体的转型项目应用
+
+使用场景（工具选择优先级）：
+！！！重要：根据用户查询内容选择工具！！！
+
+1. 当查询涉及子任务时（包含"子任务"、"subtask"、"任务列表"、"任务进度"等关键词），必须使用get_integrated_data工具
+   - 示例："查询CI000088398的应用和子任务情况" → get_integrated_data
+   - 示例："显示应用CI000088398的子任务完成情况" → get_integrated_data
+   - 示例："CI000088398有哪些子任务" → get_integrated_data
+
+2. 当需要查看应用的完整信息时（同时涉及CMDB+转型+子任务），使用get_integrated_data工具
+   - 示例："查询CI000088398的完整信息" → get_integrated_data
+   - 示例："CI000088398的详细情况" → get_integrated_data
+
+3. 当只需要CMDB静态信息时，使用cmdb_search_l2或cmdb_get_l2_with_l1工具
+   - 示例："在CMDB中查询CI000088398" → cmdb_search_l2
+   - 示例："CI000088398属于哪个L1系统" → cmdb_get_l2_with_l1
+
+4. 当只需要转型项目进度信息（不涉及子任务）时，使用app_get工具
+   - 示例："CI000088398的转型进度" → app_get（但如果也涉及子任务则用get_integrated_data）
+   - 示例："CI000088398是否延期" → app_get
+
+5. 在Excel填充和数据分析时，优先考虑使用get_integrated_data获取完整关联数据
 
 分析规则：
-第一步：判断查询是否与业务相关。
+第一步：判断是否为FAQ范围内的常见问题。
+- 如果问题在上面的CMDB系统常见问答中有现成答案，使用not_relevant工具，在message参数中直接提供FAQ答案
+- 否则继续第二步
+
+第二步：判断查询是否与业务相关。
 - 如果是打招呼或闲聊或非业务问题，使用not_relevant工具
 - 如果提到上传Excel、填充模板、模板填充、按照模板等关键词，使用excel_fill_template工具
-- 如果是业务查询继续第二步
+- 如果是业务查询继续第三步
 
-第二步：选择合适的工具。
-- 如果查询L2 ID的应用详情，使用app_get工具，l2_id参数格式如CI123456
-- 如果查询列表或统计，使用对应工具
-- 如果需要复杂查询，使用db_query工具生成SQL
+第三步：判断查询对象是CMDB系统目录还是转型项目管理。
 
-第三步：生成SQL注意事项（重要！）
+！！！重要：CI编号的两种用途！！！
+- 如果用户明确说"在CMDB中"、"CMDB系统"、"系统目录"，即使有CI编号也要用CMDB工具
+- 如果用户说"转型进度"、"延期"、"上线时间"，即使有CI编号也要用转型项目管理工具
+- 如果不确定，优先根据用户明确提到的关键词判断
+
+CMDB系统目录相关查询标志（优先级高）：
+- 明确提到：CMDB、系统目录、系统清单、配置项、系统归属
+- 查询L1系统、L2应用系统的基本信息（不涉及转型进度）
+- 查询系统管理级别、系统状态、部署架构等CMDB特有字段
+- 查询系统归属关系如所属156L1系统、所属87L1系统
+- 如果是CMDB相关，使用cmdb_开头的专用工具：
+  * 按CI编号查L2应用：cmdb_search_l2，参数keyword设置为CI编号
+  * 按名称查L2应用：cmdb_search_l2，参数keyword设置为应用名称
+  * 查询L2及其L1关系用cmdb_get_l2_with_l1
+  * 搜索156L1系统用cmdb_search_156l1
+  * 搜索87L1系统用cmdb_search_87l1
+  * 获取统计信息用cmdb_get_stats
+  * 查询L1下属L2用cmdb_get_l2_by_l1
+
+转型项目管理相关查询标志：
+- 提到转型进度、延期项目、开发团队、上线时间、子任务、AK改造、云原生改造
+- 查询应用转型状态、完成率、验收状态
+- 如果是转型项目管理，使用app_或dashboard_工具：
+  * 按L2 ID查应用转型信息：app_get，参数l2_id设置为CI编号
+  * 查询转型进度列表：app_list
+  * 查询转型统计：dashboard_stats
+
+第三步：选择具体工具。
+
+CMDB查询时：
+- 如果用户明确说"在CMDB中"查询某个CI编号，使用cmdb_search_l2工具，keyword参数设置为CI编号
+- 如果查询CMDB中的应用名称，使用cmdb_search_l2工具，keyword参数设置为应用名称
+- 如果查询CMDB统计，使用cmdb_get_stats工具
+
+转型项目管理查询时：
+- 如果查询某个应用的转型进度，使用app_get工具，l2_id参数格式如CI123456
+- 如果查询转型列表，使用app_list工具
+- 如果查询转型统计，使用dashboard_stats工具
+
+如果需要复杂查询：
+- 使用db_query工具生成SQL，但要确保查询的是正确的表（CMDB用cmdb_表，转型用applications表）
+
+第四步：生成SQL注意事项（重要！）
 - 必须生成完整的SQL语句，包含SELECT、FROM、WHERE、GROUP BY等所有必要子句
 - 不要使用省略号...来表示未完成的部分
 - 只能查询上面列出的表和字段
@@ -903,6 +1049,11 @@ class MCPService:
 - 计算百分比时使用 * 100.0 / COUNT 格式确保浮点数除法
 - 确保所有括号都已正确闭合
 - GROUP BY后必须包含所有非聚合字段
+
+！！！重要的表使用规则！！！
+1. 转型项目管理查询用applications和sub_tasks表
+2. CMDB系统目录查询用cmdb_l2_applications、cmdb_l1_systems_156、cmdb_l1_systems_87表
+3. 不要混淆这两类表，它们服务于不同的业务场景
 
 ！！！超级重要的表关联规则！！！
 applications和sub_tasks表关联时必须使用：
@@ -922,6 +1073,17 @@ LEFT JOIN sub_tasks s ON a.id = s.l2_id
 错误的JOIN示例（会报类型错误）：
 SELECT ... FROM applications a LEFT JOIN sub_tasks s ON a.l2_id = s.l2_id
 
+CMDB表关联规则：
+cmdb_l2_applications与cmdb_l1_systems关联使用字符串匹配：
+  正确写法：cmdb_l2_applications.belongs_to_156l1关联cmdb_l1_systems_156.short_name使用LIKE或等于
+  正确写法：cmdb_l2_applications.belongs_to_87l1关联cmdb_l1_systems_87.short_name使用LIKE或等于
+
+CMDB JOIN示例：
+SELECT l2.short_name, l2.belongs_to_156l1, l1.config_id
+FROM cmdb_l2_applications l2
+LEFT JOIN cmdb_l1_systems_156 l1 ON l2.belongs_to_156l1 = l1.short_name
+WHERE l2.status = '运行中'
+
 SQL模板参考：
 统计查询模板：SELECT 字段名, COUNT 星号 AS 数量, 计算表达式 AS 百分比 FROM 表名 WHERE 条件 GROUP BY 字段名 ORDER BY 排序字段 LIMIT 数量
 
@@ -935,20 +1097,47 @@ SQL模板参考：
 
 重要：对于db_query工具，完整的SQL语句必须放在 arguments.query 字段中！
 
-示例1 查询指定应用：
-用户问查询CI000088398应用时，返回JSON其中tool_name为app_get且arguments中l2_id为CI000088398
+示例1 FAQ问答：
+用户问156L1和87L1有什么区别时，返回JSON其中tool_name为not_relevant且arguments中message为FAQ中的答案内容
 
-示例2 查询延期应用：
+示例2 转型项目查询：
+用户问查询CI000088398应用转型进度时，返回JSON其中tool_name为app_get且arguments中l2_id为CI000088398
+
+示例3 CMDB查询：
+用户问在CMDB中查询CI000088398应用时，返回JSON其中tool_name为cmdb_search_l2且arguments中keyword为CI000088398
+
+示例4 查询延期应用：
 返回JSON格式：tool_name为db_query，arguments包含query字段内容为完整SELECT语句，sql_query可为null或完整SQL的副本，reasoning说明推理过程
 
-示例3 统计查询示例：
+示例5 统计查询示例：
 返回JSON格式：tool_name为db_query，arguments.query包含完整SQL如SELECT dev_team逗号 COUNT星号 AS total等，必须包含FROM WHERE GROUP BY等完整子句
 
-示例4 非业务查询：
+示例6 非业务查询：
 用户打招呼时，返回JSON其中tool_name为not_relevant且arguments中message为友好的提示
 
-示例5 Excel模板填充：
+示例7 Excel模板填充：
 用户提到填充模板、上传Excel、按照模板等时，返回JSON其中tool_name为excel_fill_template，arguments包含template_description和context字段，reasoning说明这是模板填充请求
+
+示例8 CMDB L2应用搜索：
+用户问查询CMDB中的核心银行系统或查询L2应用时，返回JSON其中tool_name为cmdb_search_l2，arguments包含keyword字段如核心银行，reasoning说明这是CMDB系统目录查询
+
+示例9 CMDB L2及L1关系查询：
+用户问某个L2应用属于哪个L1系统时，返回JSON其中tool_name为cmdb_get_l2_with_l1，arguments包含keyword字段，reasoning说明需要查询L2和L1的归属关系
+
+示例10 CMDB L1系统搜索：
+用户问查询156L1系统或87L1系统时，返回JSON其中tool_name为cmdb_search_156l1或cmdb_search_87l1，arguments包含keyword等筛选条件，reasoning说明这是L1系统查询
+
+示例11 CMDB统计信息：
+用户问CMDB中有多少个系统或L2应用总数时，返回JSON其中tool_name为cmdb_get_stats，arguments为空对象，reasoning说明这是统计查询
+
+示例12 获取应用完整关联数据（重要！）：
+- 用户问"查询CI000088398的完整信息"时，返回JSON其中tool_name为get_integrated_data，arguments包含l2_id字段值为CI000088398和include_subtasks为true
+- 用户问"查询CI000088398的应用和子任务情况"时，返回JSON其中tool_name为get_integrated_data，arguments包含l2_id字段值为CI000088398和include_subtasks为true
+- 用户问"显示CI000548240的应用和子任务的完成情况"时，返回JSON其中tool_name为get_integrated_data，arguments包含l2_id字段值为CI000548240和include_subtasks为true
+- 用户问"CI000088398有哪些子任务"时，返回JSON其中tool_name为get_integrated_data，arguments包含l2_id字段值为CI000088398和include_subtasks为true
+- reasoning说明：需要获取CMDB静态信息、转型项目动态信息和子任务的完整关联数据
+
+！！！关键规则：只要用户提到"子任务"、"完整"、"详细"等词，必须使用get_integrated_data而不是app_get！！！
 
 重要：生成的SQL必须是完整的、可执行的语句，不能包含省略号或未完成的部分！
 

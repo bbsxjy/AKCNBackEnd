@@ -62,6 +62,15 @@ class MenuService:
             order=2,
             enabled=True
         ),
+        "cloud-native": MenuItem(
+            id="cloud-native",
+            name="CloudNative",
+            title="云原生改造成果",
+            path="/cloud-native",
+            icon="trend-chart",
+            order=3,
+            enabled=True
+        ),
         # System management
         "user-management": MenuItem(
             id="user-management",
@@ -94,7 +103,7 @@ class MenuService:
         "mcp-agent": MenuItem(
             id="mcp-agent",
             name="MCPAgent",
-            title="MCP助手",
+            title="智能助手",
             path="/mcp-agent",
             icon="chat-dot-round",
             order=1,
@@ -106,22 +115,24 @@ class MenuService:
     ROLE_MENU_CONFIG = {
         "admin": {
             "common": ["dashboard", "applications", "my-tasks"],
-            "data-management": ["import", "reports"],
+            "data-management": ["import", "reports", "cloud-native"],
             "system-management": ["user-management", "announcements", "audit"],
             "tools": ["mcp-agent"],
         },
         "manager": {
             "common": ["dashboard", "applications", "my-tasks"],
-            "data-management": ["import", "reports"],
+            "data-management": ["import", "reports", "cloud-native"],
             "system-management": ["announcements"],
             "tools": ["mcp-agent"],
         },
         "editor": {
             "common": ["dashboard", "applications", "my-tasks"],
+            "data-management": ["cloud-native"],
             "tools": ["mcp-agent"],
         },
         "viewer": {
             "common": ["dashboard", "applications"],
+            "data-management": ["cloud-native"],
             "tools": ["mcp-agent"],
         },
     }

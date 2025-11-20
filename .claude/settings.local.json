@@ -55,7 +55,8 @@
       "Bash(if exist nul del /f nul)",
       "Bash(alembic current:*)",
       "Bash(alembic upgrade:*)",
-      "*"
+      "*",
+      "Read(//d/Program Files/Repos/AKCNFrontEnd/**)"
     ],
     "deny": [],
     "ask": []

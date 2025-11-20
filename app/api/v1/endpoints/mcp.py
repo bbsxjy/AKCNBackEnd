@@ -78,80 +78,98 @@ async def execute_mcp_tool(
 
         logger.info(f"Executing MCP tool: {tool_name} for user: {current_user.username}")
 
+        # Helper function to unpack standardized handler responses
+        def unpack_handler_response(handler_result):
+            """
+            Unpack standardized handler response.
+
+            New format: {"success": bool, "data": Any, "metadata": dict, "error": str}
+            Returns: (success, result, error)
+            """
+            if not isinstance(handler_result, dict):
+                return (True, handler_result, None)
+
+            if "success" in handler_result:
+                # New standardized format
+                success = handler_result.get("success", False)
+                if success:
+                    result = handler_result.get("data")
+                    # Preserve metadata by adding it to result if result is a dict
+                    if isinstance(result, dict) and "metadata" in handler_result:
+                        if "metadata" not in result:  # Don't override if already exists
+                            result["metadata"] = handler_result["metadata"]
+                    elif "metadata" in handler_result:
+                        # If result is not a dict, wrap it
+                        result = {
+                            "data": result,
+                            "metadata": handler_result["metadata"]
+                        }
+                    return (True, result, None)
+                else:
+                    error = handler_result.get("error", "Unknown error")
+                    return (False, None, error)
+            elif "error" in handler_result:
+                # Old format with error
+                error = handler_result["error"]
+                result = handler_result.get("data")
+                return (False, result, error)
+            else:
+                # Old format without error (assume success)
+                return (True, handler_result, None)
+
         # Route to appropriate handler based on tool name
         result = None
         error = None
 
         # Route to appropriate handler based on tool category
         if tool_name == "db_query":
-            result = await mcp_service.execute_sql_query(
+            handler_result = await mcp_service.execute_sql_query(
                 db=db,
                 query=arguments.get("query", ""),
                 params=arguments.get("params")
             )
-            if "error" in result:
-                error = result["error"]
-                result = None
+            _, result, error = unpack_handler_response(handler_result)
 
         elif tool_name == "db_get_schema":
-            result = await mcp_service.get_database_schema(
+            handler_result = await mcp_service.get_database_schema(
                 table_name=arguments.get("table_name")
             )
-            if "error" in result:
-                error = result["error"]
-                result = None
+            _, result, error = unpack_handler_response(handler_result)
 
         # Application management tools
         elif tool_name in ["app_list", "app_get", "app_create", "app_update"]:
-            result = await handlers.handle_application_operation(tool_name, arguments)
-            if "error" in result:
-                error = result["error"]
-                result = result.get("data")
+            handler_result = await handlers.handle_application_operation(tool_name, arguments)
+            _, result, error = unpack_handler_response(handler_result)
 
         # SubTask management tools
         elif tool_name in ["task_list", "task_create", "task_batch_update"]:
-            result = await handlers.handle_subtask_operation(tool_name, arguments)
-            if "error" in result:
-                error = result["error"]
-                result = result.get("data")
+            handler_result = await handlers.handle_subtask_operation(tool_name, arguments)
+            _, result, error = unpack_handler_response(handler_result)
 
         # Excel operations
         elif tool_name in ["excel_import", "excel_export"]:
-            result = await handlers.handle_excel_operation(tool_name, arguments)
-            if "error" in result:
-                error = result["error"]
-                result = result.get("data")
+            handler_result = await handlers.handle_excel_operation(tool_name, arguments)
+            _, result, error = unpack_handler_response(handler_result)
 
         # Calculation services
         elif tool_name in ["calc_progress", "calc_delays"]:
-            result = await handlers.handle_calculation_service(tool_name, arguments)
-            if "error" in result:
-                error = result["error"]
-                result = result.get("data")
+            handler_result = await handlers.handle_calculation_service(tool_name, arguments)
+            _, result, error = unpack_handler_response(handler_result)
 
         # Audit operations
         elif tool_name in ["audit_get_logs", "audit_rollback"]:
-            result = await handlers.handle_audit_operation(tool_name, arguments)
-            if "error" in result:
-                error = result["error"]
-                result = result.get("data")
+            handler_result = await handlers.handle_audit_operation(tool_name, arguments)
+            _, result, error = unpack_handler_response(handler_result)
 
         # Dashboard & Analytics
         elif tool_name in ["dashboard_stats", "dashboard_export"]:
-            result = await handlers.handle_dashboard_stats(tool_name, arguments)
-            if "error" in result:
-                error = result["error"]
-                result = result.get("data")
+            handler_result = await handlers.handle_dashboard_stats(tool_name, arguments)
+            _, result, error = unpack_handler_response(handler_result)
 
         # Excel Advanced Operations (MCP Excel Server integration)
         elif tool_name in ["excel_create_report", "excel_generate_from_query"]:
-            result = await handlers.handle_excel_advanced_operation(tool_name, arguments)
-            if "error" in result:
-                error = result["error"]
-                result = None
-            elif not result.get("success"):
-                error = result.get("message", "Excel operation failed")
-                result = None
+            handler_result = await handlers.handle_excel_advanced_operation(tool_name, arguments)
+            _, result, error = unpack_handler_response(handler_result)
 
         # Excel Template Filling (AI-powered)
         elif tool_name == "excel_fill_template":
@@ -188,11 +206,24 @@ async def execute_mcp_tool(
                     "支持的列名示例：L2 ID、应用名称、进度%、状态、团队、负责人等",
                     "会保留模板的所有格式（颜色、边框、合并单元格等）"
                 ],
-                "note": "由于此功能需要文件上传，无法直接通过文本消息调用。请使用上述方法之一。"
+                "note": "由于此功能需要文件上传，无法直接通过文本消息调用。请使用上述方法之一。",
+                "metadata": {
+                    "renderType": "instruction",
+                    "title": "Excel模板填充使用说明"
+                }
             }
+            error = None
+
+        # CMDB System Catalog Tools
+        elif tool_name in ["cmdb_search_l2", "cmdb_get_l2_with_l1", "cmdb_search_156l1",
+                           "cmdb_search_87l1", "cmdb_get_stats", "cmdb_get_l2_by_l1",
+                           "cmdb_import", "get_integrated_data"]:
+            handler_result = await handlers.handle_cmdb_operation(tool_name, arguments)
+            _, result, error = unpack_handler_response(handler_result)
 
         else:
             error = f"工具 '{tool_name}' 尚未实现"
+            result = None
 
         execution_time = time.time() - start_time
 
@@ -277,47 +308,45 @@ async def natural_language_query(
             query_interpretation=f"AI解析: {reasoning}\n执行工具: {tool_name}\n参数: {arguments}"
         )
 
-        # AI Enhancement - generate data-driven intelligent report
-        # 注意：模板式报告生成功能已禁用，仅保留智能数据分析
+        # AI Enhancement - 智能解读查询结果
         if enable_ai and ai_assistant.enabled and exec_result.success and exec_result.result:
             try:
-                # Use the new data-driven report generation service
-                from app.services.ai_report_service import generate_intelligent_report
+                # 智能构建提示词：根据用户问题和数据动态生成
+                result_str = json.dumps(exec_result.result, ensure_ascii=False, indent=2)
+                if len(result_str) > 3000:
+                    result_str = result_str[:3000] + "\n... (数据已截断)"
 
-                # For db_query tool, generate intelligent report based on SQL analysis
-                if tool_name == "db_query" and arguments.get("query"):
-                    sql_query = arguments.get("query")
-                    intelligent_report = await generate_intelligent_report(
-                        query=sql_query,
-                        results=exec_result.result,
-                        context={
-                            "user_query": request.query,
-                            "tool_name": tool_name
-                        }
-                    )
+                prompt = f"""你是一个数据分析助手。用户提问："{request.query}"
 
-                    # Add the intelligent report to response
-                    response.ai_report = intelligent_report.get("ai_narrative", "")
+执行的工具：{tool_name}
+返回的数据：
+{result_str}
 
-                    # Include data insights in the response
-                    if "insights" in intelligent_report:
-                        response.query_interpretation += f"\n\n关键洞察:\n" + "\n".join(
-                            f"- {insight}" for insight in intelligent_report["insights"]
-                        )
-                # else:
-                #     # 模板式报告生成已禁用
-                #     # Fallback to simple report generation for other tools
-                #     # ai_report = await ai_assistant.generate_report(exec_result.result)
-                #     # response.ai_report = ai_report
-                #     pass
+请根据用户的问题，用简洁、清晰的中文回答用户。要求：
+1. 直接回答用户的问题，不要使用"根据数据..."等开场白
+2. 提取关键数据指标，用自然语言描述
+3. 如果有多个维度的数据，简要总结要点
+4. 如果发现异常或值得关注的地方，指出来
+5. 保持简洁，通常3-5句话即可
+6. 不要重复用户已经知道的信息
 
-                # Get AI suggestions for next actions
-                suggestions = await ai_assistant.suggest_next_actions({
-                    "query": request.query,
-                    "tool_used": tool_name,
-                    "result": exec_result.result
-                })
-                response.ai_suggestions = suggestions
+请直接开始回答："""
+
+                # 生成AI解读
+                ai_report = await ai_assistant._call_llm(prompt)
+                response.ai_report = ai_report
+
+                # 可选：获取AI建议的下一步操作
+                try:
+                    suggestions = await ai_assistant.suggest_next_actions({
+                        "query": request.query,
+                        "tool_used": tool_name,
+                        "result": exec_result.result
+                    })
+                    response.ai_suggestions = suggestions
+                except:
+                    # 建议生成失败不影响主功能
+                    pass
 
                 logger.info(f"AI enhancement completed for query: {request.query}")
 
@@ -762,33 +791,43 @@ async def _natural_language_query_stream_impl(
                 yield f"event: done\ndata: {json.dumps({'success': False}, ensure_ascii=False)}\n\n"
                 return
 
-            # Phase 3: AI报告生成已禁用
-            # if ai_assistant.enabled and exec_result.result:
-            #     yield f"event: status\ndata: {json.dumps({'phase': 'generating', 'message': '正在生成AI报告...'}, ensure_ascii=False)}\n\n"
-            #
-            #     # Generate streaming report (use sanitizer to avoid Jinja2 issues)
-            #     from app.mcp.ai_tools import sanitize_data_for_jinja2
-            #     safe_data = sanitize_data_for_jinja2(exec_result.result)
-            #
-            #     prompt = f"""
-            #     Generate a professional summary report from this data:
-            #
-            #     {safe_data}
-            #
-            #     The report should be:
-            #     1. Clear and concise
-            #     2. Highlight key metrics
-            #     3. Identify trends or issues
-            #     4. Provide actionable insights
-            #     """
-            #
-            #     try:
-            #         async for chunk in ai_assistant._call_llm_stream(prompt):
-            #             # Send each chunk as it's generated
-            #             yield f"event: ai_chunk\ndata: {json.dumps({'content': chunk}, ensure_ascii=False)}\n\n"
-            #     except Exception as ai_error:
-            #         logger.warning(f"AI streaming failed: {ai_error}")
-            #         yield f"event: error\ndata: {json.dumps({'error': 'AI生成失败', 'details': str(ai_error)}, ensure_ascii=False)}\n\n"
+            # Phase 3: AI智能解读数据
+            if ai_assistant.enabled and exec_result.result:
+                try:
+                    yield f"event: status\ndata: {json.dumps({'phase': 'generating', 'message': '正在分析数据...'}, ensure_ascii=False)}\n\n"
+
+                    # 智能构建提示词：根据用户问题和数据动态生成
+                    import json as json_module
+
+                    # 将结果数据转换为字符串（限制长度避免token溢出）
+                    result_str = json_module.dumps(exec_result.result, ensure_ascii=False, indent=2)
+                    if len(result_str) > 3000:
+                        result_str = result_str[:3000] + "\n... (数据已截断)"
+
+                    prompt = f"""你是一个数据分析助手。用户提问："{query_text}"
+
+执行的工具：{tool_name}
+返回的数据：
+{result_str}
+
+请根据用户的问题，用简洁、清晰的中文回答用户。要求：
+1. 直接回答用户的问题，不要使用"根据数据..."等开场白
+2. 提取关键数据指标，用自然语言描述
+3. 如果有多个维度的数据，简要总结要点
+4. 如果发现异常或值得关注的地方，指出来
+5. 保持简洁，通常3-5句话即可
+6. 不要重复用户已经知道的信息
+
+请直接开始回答："""
+
+                    # 流式生成AI解读
+                    async for chunk in ai_assistant._call_llm_stream(prompt):
+                        # 发送每个片段
+                        yield f"event: ai_chunk\ndata: {json_module.dumps({'content': chunk}, ensure_ascii=False)}\n\n"
+
+                except Exception as ai_error:
+                    logger.warning(f"AI解读失败（不影响数据返回）: {ai_error}")
+                    # AI失败不影响主功能，只记录警告
 
             # Phase 4: Done
             yield f"event: done\ndata: {json.dumps({'success': True, 'message': '查询完成'}, ensure_ascii=False)}\n\n"
